@@ -100,7 +100,7 @@ const MOCK: Inscripcion[] = [
     tipo: "Asistencial",
     candidato: { doc: "1010", nombres: "Laura", apellidos: "Quintero", telefono: "3000000000", email: "laura@ejemplo.com" },
     cargo: "Enfermera jefe",
-    actividad: "A4 • Atención de enfermería",
+    actividad: "A4 • Actividad 4",
     estado: "En evaluación",
     evaluacion: { puntaje: 78, docsOk: { cv: true, doc: true, certificados: true, rut: false }, concepto: "Perfil adecuado, falta RUT" },
     adjuntos: [],
@@ -109,14 +109,14 @@ const MOCK: Inscripcion[] = [
 
 /* ============== Utilidades ============== */
 const actividades = [
-  "A1 • Diagnóstico inicial",
-  "A2 • Intervención gerontológica",
-  "A3 • Atención médica",
-  "A4 • Atención de enfermería",
-  "A5 • Apoyo nutricional",
-  "A6 • Acompañamiento psicológico",
-  "A7 • Fisioterapia",
-  "A8 • Trabajo social",
+  "A1 • Actividad 1",
+  "A2 • Actividad 2",
+  "A3 • Actividad 3",
+  "A4 • Actividad 4",
+  "A5 • Actividad 5",
+  "A6 • Actividad 6",
+  "A7 • Actividad 7",
+  "A8 • Actividad 8",
 ];
 const nextRadicado = (n: number) => `INS-2025-${String(n + 1).padStart(4, "0")}`;
 const canGenerateContract = (r: Inscripcion) =>

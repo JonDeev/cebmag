@@ -259,21 +259,21 @@ export default function CostosPage() {
     <DashboardShell title={title}>
       <div className="grid gap-6">
         {/* KPIs */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <div className="rounded border border-[var(--subtle)] bg-white p-3">
-            <div className="text-slate-500 text-sm">Presupuesto total</div>
+            <div className="text-sm text-slate-500">Presupuesto total</div>
             <div className="text-xl font-semibold">{money(kpis.totalPres)}</div>
           </div>
           <div className="rounded border border-[var(--subtle)] bg-white p-3">
-            <div className="text-slate-500 text-sm">Ejecutado</div>
+            <div className="text-sm text-slate-500">Ejecutado</div>
             <div className="text-xl font-semibold">{money(kpis.totalExec)}</div>
           </div>
           <div className="rounded border border-[var(--subtle)] bg-white p-3">
-            <div className="text-slate-500 text-sm">Disponible</div>
+            <div className="text-sm text-slate-500">Disponible</div>
             <div className="text-xl font-semibold">{money(kpis.disp)}</div>
           </div>
           <div className="rounded border border-[var(--subtle)] bg-white p-3">
-            <div className="text-slate-500 text-sm">Ejecución</div>
+            <div className="text-sm text-slate-500">Ejecución</div>
             <div className="text-xl font-semibold">{kpis.pct}%</div>
           </div>
         </div>
@@ -288,7 +288,7 @@ export default function CostosPage() {
             </Button>
           }
         >
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
             {acts.map((a) => {
               const gasto = execByAct[a.id] || 0;
               const disp = a.presupuesto - gasto;
@@ -319,7 +319,7 @@ export default function CostosPage() {
                   <div className="text-xs text-slate-600">
                     Ejecutado: <b>{money(gasto)}</b> • Disponible: <b>{money(disp)}</b>
                   </div>
-                  <div className="mt-2 h-2 rounded bg-slate-100 overflow-hidden">
+                  <div className="h-2 mt-2 overflow-hidden rounded bg-slate-100">
                     <div className="h-full bg-[var(--brand)]" style={{ width: `${pct}%` }} />
                   </div>
                 </div>
@@ -334,10 +334,10 @@ export default function CostosPage() {
           icon={<Wallet size={18} />}
           actions={
             <>
-              <div className="hidden md:flex items-center gap-2">
+              <div className="items-center hidden gap-2 md:flex">
                 <div className="relative">
                   <Calendar className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
-                  <Input type="date" value={d1} onChange={(e) => setD1(e.target.value)} className="pl-8 w-40" />
+                  <Input type="date" value={d1} onChange={(e) => setD1(e.target.value)} className="w-40 pl-8" />
                 </div>
                 <Input type="date" value={d2} onChange={(e) => setD2(e.target.value)} className="w-40" />
                 <Select value={actId} onChange={(e) => setActId(e.target.value)} className="w-56">
@@ -371,14 +371,14 @@ export default function CostosPage() {
             <table className="min-w-full text-sm">
               <thead className="border-b border-[var(--subtle)] text-slate-500">
                 <tr>
-                  <th className="text-left py-2 pl-4 pr-3">Fecha</th>
-                  <th className="text-left py-2 px-3">Actividad</th>
-                  <th className="text-left py-2 px-3">Categoría</th>
-                  <th className="text-left py-2 px-3">Descripción</th>
-                  <th className="text-left py-2 px-3">Proveedor</th>
-                  <th className="text-left py-2 px-3">Documento</th>
-                  <th className="text-right py-2 px-3">Valor</th>
-                  <th className="text-left py-2 px-3 w-48">Acciones</th>
+                  <th className="py-2 pl-4 pr-3 text-left">Fecha</th>
+                  <th className="px-3 py-2 text-left">Actividad</th>
+                  <th className="px-3 py-2 text-left">Categoría</th>
+                  <th className="px-3 py-2 text-left">Descripción</th>
+                  <th className="px-3 py-2 text-left">Proveedor</th>
+                  <th className="px-3 py-2 text-left">Documento</th>
+                  <th className="px-3 py-2 text-right">Valor</th>
+                  <th className="w-48 px-3 py-2 text-left">Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -387,18 +387,18 @@ export default function CostosPage() {
                   return (
                     <tr key={g.id} className="border-b border-[var(--subtle)]/70">
                       <td className="py-2 pl-4 pr-3">{g.fecha}</td>
-                      <td className="py-2 px-3">
+                      <td className="px-3 py-2">
                         <div className="flex items-center gap-2">
                           <Building2 size={14} className="text-slate-400" />
                           <span className="whitespace-nowrap">{a ? `${a.codigo} • ${a.nombre}` : "—"}</span>
                         </div>
                       </td>
-                      <td className="py-2 px-3">{g.categoria}</td>
-                      <td className="py-2 px-3">{g.descripcion}</td>
-                      <td className="py-2 px-3">{g.proveedor || "—"}</td>
-                      <td className="py-2 px-3">{g.documento || "—"}</td>
-                      <td className="py-2 px-3 text-right font-medium">{money(g.valor)}</td>
-                      <td className="py-2 px-3">
+                      <td className="px-3 py-2">{g.categoria}</td>
+                      <td className="px-3 py-2">{g.descripcion}</td>
+                      <td className="px-3 py-2">{g.proveedor || "—"}</td>
+                      <td className="px-3 py-2">{g.documento || "—"}</td>
+                      <td className="px-3 py-2 font-medium text-right">{money(g.valor)}</td>
+                      <td className="px-3 py-2">
                         <div className="flex items-center gap-2">
                           <Button variant="outline" onClick={() => editar(g)}>
                             <Pencil size={14} /> Editar
@@ -482,9 +482,9 @@ function GastoModal({
         </>
       }
     >
-      <div className="grid lg:grid-cols-3 gap-6">
+      <div className="grid gap-6 lg:grid-cols-3">
         {/* Formulario */}
-        <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 lg:col-span-2 md:grid-cols-2">
           <label className="grid gap-1 text-sm">
             <span className="text-slate-700">Actividad</span>
             <Select
@@ -565,24 +565,24 @@ function GastoModal({
           </label>
 
           <div className="md:col-span-2 rounded border border-[var(--subtle)] bg-white p-3">
-            <div className="text-sm font-semibold mb-2">Adjuntos (PDF/otros)</div>
+            <div className="mb-2 text-sm font-semibold">Adjuntos (PDF/otros)</div>
             <input type="file" multiple onChange={(e) => onAdj(e.target.files)} />
             {draft.adjuntos.length > 0 && (
               <div className="mt-3 overflow-x-auto">
                 <table className="min-w-full text-sm">
                   <thead className="text-slate-500 border-b border-[var(--subtle)]">
                     <tr>
-                      <th className="text-left py-2 px-2">Archivo</th>
-                      <th className="text-left py-2 px-2">Tamaño</th>
-                      <th className="text-left py-2 px-2 w-24">—</th>
+                      <th className="px-2 py-2 text-left">Archivo</th>
+                      <th className="px-2 py-2 text-left">Tamaño</th>
+                      <th className="w-24 px-2 py-2 text-left">—</th>
                     </tr>
                   </thead>
                   <tbody>
                     {draft.adjuntos.map((a) => (
                       <tr key={a.name} className="border-b border-[var(--subtle)]/60">
-                        <td className="py-2 px-2">{a.name}</td>
-                        <td className="py-2 px-2">{(a.size / 1024).toFixed(1)} KB</td>
-                        <td className="py-2 px-2">
+                        <td className="px-2 py-2">{a.name}</td>
+                        <td className="px-2 py-2">{(a.size / 1024).toFixed(1)} KB</td>
+                        <td className="px-2 py-2">
                           <Button variant="ghost" onClick={() => rmAdj(a.name)}><Trash2 size={14} /> Quitar</Button>
                         </td>
                       </tr>
@@ -597,12 +597,12 @@ function GastoModal({
         {/* Resumen de actividad */}
         <div className="grid gap-3">
           <div className="rounded border border-[var(--subtle)] bg-white p-3">
-            <div className="text-sm font-semibold mb-1">Resumen de actividad</div>
+            <div className="mb-1 text-sm font-semibold">Resumen de actividad</div>
             <div className="text-xs text-slate-600">Actividad: <b>{act ? `${act.codigo} • ${act.nombre}` : "—"}</b></div>
             <div className="text-xs text-slate-600">Presupuesto: <b>{money(presupuesto)}</b></div>
             <div className="text-xs text-slate-600">Ejecutado + este gasto: <b>{money((execByAct[draft.actividadId] || 0) + draft.valor)}</b></div>
             <div className="text-xs text-slate-600">Disponible estimado: <b>{money(disponible)}</b></div>
-            <div className="mt-2 h-2 rounded bg-slate-100 overflow-hidden">
+            <div className="h-2 mt-2 overflow-hidden rounded bg-slate-100">
               <div className="h-full bg-[var(--brand)]" style={{ width: `${pct}%` }} />
             </div>
           </div>
@@ -643,12 +643,12 @@ function PresupuestoModal({
         <table className="min-w-full text-sm">
           <thead className="border-b border-[var(--subtle)] text-slate-500">
             <tr>
-              <th className="text-left py-2 px-3">Código</th>
-              <th className="text-left py-2 px-3">Actividad</th>
-              <th className="text-right py-2 px-3">Presupuesto</th>
-              <th className="text-right py-2 px-3">Ejecutado</th>
-              <th className="text-right py-2 px-3">Disponible</th>
-              <th className="text-left py-2 px-3">Estado</th>
+              <th className="px-3 py-2 text-left">Código</th>
+              <th className="px-3 py-2 text-left">Actividad</th>
+              <th className="px-3 py-2 text-right">Presupuesto</th>
+              <th className="px-3 py-2 text-right">Ejecutado</th>
+              <th className="px-3 py-2 text-right">Disponible</th>
+              <th className="px-3 py-2 text-left">Estado</th>
             </tr>
           </thead>
           <tbody>
@@ -657,20 +657,20 @@ function PresupuestoModal({
               const disp = a.presupuesto - exec;
               return (
                 <tr key={a.id} className="border-b border-[var(--subtle)]/70">
-                  <td className="py-2 px-3">{a.codigo}</td>
-                  <td className="py-2 px-3">{a.nombre}</td>
-                  <td className="py-2 px-3 text-right">
+                  <td className="px-3 py-2">{a.codigo}</td>
+                  <td className="px-3 py-2">{a.nombre}</td>
+                  <td className="px-3 py-2 text-right">
                     <Input
                       type="number"
                       min={0}
                       value={a.presupuesto}
                       onChange={(e) => setAct(i, { presupuesto: Number(e.target.value) })}
-                      className="w-36 text-right"
+                      className="text-right w-36"
                     />
                   </td>
-                  <td className="py-2 px-3 text-right">{money(exec)}</td>
-                  <td className="py-2 px-3 text-right">{money(disp)}</td>
-                  <td className="py-2 px-3">
+                  <td className="px-3 py-2 text-right">{money(exec)}</td>
+                  <td className="px-3 py-2 text-right">{money(disp)}</td>
+                  <td className="px-3 py-2">
                     <Select value={a.estado} onChange={(e) => setAct(i, { estado: e.target.value as EstadoAct })}>
                       {(["Abierta", "Cerrada"] as const).map((s) => (
                         <option key={s} value={s}>{s}</option>
@@ -686,3 +686,4 @@ function PresupuestoModal({
     </Modal>
   );
 }
+  
