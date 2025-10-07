@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+:root {
+  --brand: #1e88e5;
+  --brand-700: #1976d2;
+  --bg-soft: #eef5fb;
+  --panel: #ffffff;
+  --sidebar: #f7fbff;
+  --text: #0f172a;
+  --subtle: #e5eff8;
+}
+
+html,
+body {
+  height: 100%;
+}
