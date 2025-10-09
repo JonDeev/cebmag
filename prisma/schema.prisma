@@ -1,0 +1,453 @@
+// prisma/schema.prisma
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+/**
+ * ================= Enums =================
+ */
+enum PQRSKind {
+  PETICION
+  QUEJA
+  RECLAMO
+  SUGERENCIA
+}
+
+enum PQRSStatus {
+  ABIERTA
+  EN_TRAMITE
+  RESUELTA
+  CERRADA
+}
+
+/**
+ * Según tu UI de PQRS
+ */
+enum PQRSOrigen {
+  BENEFICIARIO
+  TERCERO
+}
+
+enum PQRSCanal {
+  WEB
+  TELEFONO
+  PRESENCIAL
+  EMAIL
+}
+
+enum EncuestaEstado {
+  BORRADOR
+  ACTIVA
+  INACTIVA
+}
+
+/**
+ * Mapeados a textos mostrados en UI de costos
+ */
+enum EntregaEstado {
+  PENDIENTE
+  PARCIAL
+  ENTREGADO
+}
+
+/**
+ * === Costos ===
+ */
+enum ActividadEstado {
+  ABIERTA @map("Abierta")
+  CERRADA @map("Cerrada")
+}
+
+enum MetodoPago {
+  EFECTIVO      @map("Efectivo")
+  TRANSFERENCIA @map("Transferencia")
+  CHEQUE        @map("Cheque")
+  OTRO          @map("Otro")
+}
+
+enum GastoCategoria {
+  PERSONAL   @map("Personal")
+  HONORARIOS @map("Honorarios")
+  TRANSPORTE @map("Transporte")
+  INSUMOS    @map("Insumos")
+  ALQUILER   @map("Alquiler")
+  PAPELERIA  @map("Papelería")
+  LOGISTICA  @map("Logística")
+  OTROS      @map("Otros")
+}
+
+enum TipoPersonal {
+  ADMINISTRATIVO
+  ASISTENCIAL
+}
+
+enum InscripcionEstado {
+  EN_EVALUACION
+  APROBADA
+  RECHAZADA
+  CONTRATO_GENERADO
+  FIRMADO
+}
+
+enum Decision {
+  APROBAR
+  RECHAZAR
+}
+
+enum Jornada {
+  TIEMPO_COMPLETO
+  MEDIO_TIEMPO
+  POR_HORAS
+}
+
+enum Modalidad {
+  PRESTACION_SERVICIOS
+  TEMPORAL
+  INDEFINIDO
+}
+
+enum SalarioTipo {
+  SALARIO
+  HONORARIOS
+}
+
+enum Periodo {
+  MENSUAL
+  QUINCENAL
+  POR_SERVICIO
+}
+
+/**
+ * ====== Enums Beneficiario ======
+ */
+enum TipoDocumento {
+  CC
+  TI
+  CE
+  RC
+  PA // Pasaporte
+  PEP
+  PPT
+  NIT
+  OTRO
+}
+
+enum Sexo {
+  FEMENINO
+  MASCULINO
+  OTRO
+}
+
+enum RegimenSalud {
+  CONTRIBUTIVO
+  SUBSIDIADO
+  ESPECIAL
+  EXCEPCION
+  PARTICULAR
+  NO_INFORMA
+}
+
+enum EstadoCivil {
+  SOLTERO
+  CASADO
+  UNION_LIBRE
+  SEPARADO
+  DIVORCIADO
+  VIUDO
+  NO_INFORMA
+}
+
+enum Etnia {
+  INDIGENA
+  AFROCOLOMBIANO
+  RAIZAL
+  PALENQUERO
+  ROM
+  NINGUNA
+  OTRA
+  NO_INFORMA
+}
+
+enum Zona {
+  URBANA
+  RURAL
+}
+
+/**
+ * RH con valores reales en BD
+ */
+enum GrupoRH {
+  O_POS  @map("O+")
+  O_NEG  @map("O-")
+  A_POS  @map("A+")
+  A_NEG  @map("A-")
+  B_POS  @map("B+")
+  B_NEG  @map("B-")
+  AB_POS @map("AB+")
+  AB_NEG @map("AB-")
+}
+
+enum DiscapacidadTipo {
+  NINGUNA
+  VISUAL
+  AUDITIVA
+  MOTORA
+  COGNITIVA
+  OTRA
+}
+
+/**
+ * ================ Usuarios y roles ================
+ */
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  nombre    String?
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  roles         UserRole[]
+  pqrsAsignados PQRS[]     @relation("PQRSResponsable")
+}
+
+model Role {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  description String?
+  permissions Json?
+  users       UserRole[]
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+/**
+ * ================ Beneficiarios ================
+ */
+model Beneficiario {
+  id String @id @default(cuid())
+
+  // Identificación
+  tipoDoc         TipoDocumento @default(CC)
+  doc             String        @unique
+  nombres         String
+  apellidos       String
+  fechaNacimiento DateTime?
+  sexo            Sexo?
+
+  // Contacto
+  telefono String?
+  celular  String?
+  email    String?
+
+  // Ubicación
+  direccion    String?
+  barrio       String?
+  ciudad       String?
+  departamento String?
+  zona         Zona?
+  municipio    String?
+  codigoPostal String?
+  estrato      Int?
+  sisbenNivel  String?
+
+  // Médica
+  eps                 String?
+  rh                  GrupoRH?
+  discapacidad        DiscapacidadTipo?
+  discapacidadDetalle String?
+  alergias            String?
+  medicamentos        String?
+  antecedentes        String?
+
+  // Cultural
+  comunidad           String?
+  lengua              String?
+  practicasCulturales String?
+
+  // Urgencias
+  urgenciaNombre     String?
+  urgenciaParentesco String?
+  urgenciaTelefono   String?
+  urgenciaDireccion  String?
+
+  // Otros
+  regimen          RegimenSalud?
+  estadoCivil      EstadoCivil?
+  etnia            Etnia?
+  gestante         Boolean?
+  victimaConflicto Boolean?      @default(false)
+  activo           Boolean       @default(true)
+
+  // Flex
+  contacto   Json?
+  ubicacion  Json?
+  medico     Json?
+  cultura    Json?
+  urgencias  Json?
+  acudientes Json? // [{nombre,parentesco,telefono,direccion}]
+  docs       Json? // [{nombre,url,tipo}]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entregas Entrega[]
+  pqrs     PQRS[]
+
+  @@index([tipoDoc, doc])
+  @@index([nombres, apellidos])
+  @@index([departamento, ciudad, barrio])
+}
+
+/**
+ * ================ PQRS ================
+ */
+model PQRS {
+  id       String     @id @default(cuid())
+  radicado String     @unique
+  fecha    DateTime   @default(now())
+  tipo     PQRSKind
+  estado   PQRSStatus @default(ABIERTA)
+  origen   PQRSOrigen @default(BENEFICIARIO)
+  canal    PQRSCanal  @default(WEB)
+
+  solicitante Json // {doc, nombre, telefono?, email?}
+  asunto      String
+  descripcion String
+
+  responsable String? // texto libre (ej. "Mesa de ayuda")
+  vencimiento DateTime?
+
+  adjuntos  Json? // [{name,size}]
+  historial Json? // [{fecha,evento,nota?}]
+
+  beneficiarioId String?
+  beneficiario   Beneficiario? @relation(fields: [beneficiarioId], references: [id])
+
+  responsableUserId String?
+  responsableUser   User?   @relation("PQRSResponsable", fields: [responsableUserId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([estado])
+  @@index([fecha])
+  @@index([origen])
+  @@index([canal])
+  @@index([estado, vencimiento])
+}
+
+/**
+ * ================ Entregas (kits) ================
+ */
+model Entrega {
+  id            String        @id @default(cuid())
+  comprobante   String        @unique
+  fecha         DateTime
+  responsable   String
+  estado        EntregaEstado @default(PENDIENTE)
+  kit           String?
+  items         Json // [{nombre,unidad,cantidad}]
+  observaciones String?
+  adjuntos      Json?
+
+  beneficiarioId String?
+  beneficiario   Beneficiario? @relation(fields: [beneficiarioId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([estado])
+  @@index([fecha])
+}
+
+/**
+ * ================ Actividades y gastos (COSTOS) ================
+ */
+model Actividad {
+  id          String          @id @default(cuid())
+  codigo      String          @unique // A1..A8
+  nombre      String
+  presupuesto Int
+  estado      ActividadEstado @default(ABIERTA)
+  cerradaEn   DateTime? // opcional: cuándo se cerró
+
+  gastos    Gasto[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([estado])
+}
+
+model Gasto {
+  id          String         @id @default(cuid())
+  fecha       DateTime
+  actividadId String
+  categoria   GastoCategoria
+  descripcion String
+  proveedor   String?
+  metodo      MetodoPago?
+  documento   String?
+  valor       Int
+  adjuntos    Json?
+
+  actividad Actividad @relation(fields: [actividadId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([actividadId, fecha])
+  @@index([categoria])
+}
+
+/**
+ * ================ Inscripciones y contratos ================
+ */
+model Inscripcion {
+  id         String            @id @default(cuid())
+  radicado   String            @unique
+  fecha      DateTime          @default(now())
+  tipo       TipoPersonal
+  candidato  Json // {doc,nombres,apellidos,telefono,email,direccion,ciudad}
+  cargo      String
+  actividad  String // "A4 • Atención de enfermería", etc.
+  estado     InscripcionEstado @default(EN_EVALUACION)
+  evaluacion Json // {puntaje, docsOk{...}, concepto, decision}
+  adjuntos   Json?
+
+  contrato Contrato?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([estado])
+  @@index([tipo])
+}
+
+model Contrato {
+  id            String      @id @default(cuid())
+  inscripcionId String      @unique
+  modalidad     Modalidad
+  jornada       Jornada
+  salarioTipo   SalarioTipo
+  valor         Int
+  periodo       Periodo
+  inicio        DateTime
+  fin           DateTime?
+  descripcion   String?
+
+  inscripcion Inscripcion @relation(fields: [inscripcionId], references: [id], onDelete: Cascade)
+}
