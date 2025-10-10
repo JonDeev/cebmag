@@ -351,6 +351,35 @@ model PQRS {
 }
 
 /**
+ * ================ Encuestas ================
+ */
+model Encuesta {
+  id          String         @id @default(cuid())
+  titulo      String
+  servicio    String
+  estado      EncuestaEstado @default(BORRADOR)
+  descripcion String?
+  creada      DateTime       @default(now())
+  preguntas   Json // [{id,texto,tipo,opciones?}]
+
+  respuestas Respuesta[]
+
+  @@index([estado])
+}
+
+model Respuesta {
+  id          String   @id @default(cuid())
+  encuestaId  String
+  fecha       DateTime @default(now())
+  respondente Json?
+  valores     Json
+
+  encuesta Encuesta @relation(fields: [encuestaId], references: [id], onDelete: Cascade)
+
+  @@index([encuestaId, fecha])
+}
+
+/**
  * ================ Entregas (kits) ================
  */
 model Entrega {
