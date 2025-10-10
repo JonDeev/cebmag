@@ -3,7 +3,7 @@
 import { useState } from "react";
 import DashboardShell from "../_components/DashboardShell";
 import {
-  IdCard, MapPin, Stethoscope, Palette, PhoneCall, UserPlus, Upload, Trash2, Plus,
+  IdCard, Stethoscope, Palette, PhoneCall, UserPlus, Upload, Trash2, Plus,
 } from "lucide-react";
 
 /* ---------- UI helpers (inputs básicos) ---------- */
@@ -71,7 +71,7 @@ function Button({
   );
 }
 
-/* ---------- Tipos mínimos ---------- */
+/* ---------- Tipos ---------- */
 type Acudiente = { nombre: string; parentesco: string; telefono: string; direccion: string };
 
 /* ---------- Página ---------- */
@@ -97,12 +97,78 @@ export default function BeneficiariosPage() {
   const patchAcudiente = (idx: number, patch: Partial<Acudiente>) =>
     setAcudientes((a) => a.map((x, i) => (i === idx ? { ...x, ...patch } : x)));
 
-  // Acciones de pantalla (sin backend)
-  const guardar = () => alert("Formulario guardado (UI sin backend).");
+  const [saving, setSaving] = useState(false);
+
   const limpiar = () => {
     setDocs([]);
     setAcudientes([{ nombre: "", parentesco: "", telefono: "", direccion: "" }]);
     (document.getElementById("benef-form") as HTMLFormElement | null)?.reset();
+  };
+
+  const guardar = async () => {
+    const form = document.getElementById("benef-form") as HTMLFormElement | null;
+    if (!form) return;
+
+    const fd = new FormData(form);
+    const payload = {
+      // nombres UI → backend
+      tipo_doc: fd.get("tipo_doc"),
+      num_doc: fd.get("num_doc"),
+      fecha_nac: fd.get("fecha_nac"),
+      nombres: fd.get("nombres"),
+      apellidos: fd.get("apellidos"),
+      sexo: fd.get("sexo"),
+      direccion: fd.get("direccion"),
+      barrio: fd.get("barrio"),
+      ciudad: fd.get("ciudad"),
+      dpto: fd.get("dpto"),
+      zona: fd.get("zona"),
+      telefono: fd.get("telefono"),
+      eps: fd.get("eps"),
+      rh: fd.get("rh"),
+      discapacidad: fd.get("discapacidad"),
+      alergias: fd.get("alergias"),
+      medicamentos: fd.get("medicamentos"),
+      antecedentes: fd.get("antecedentes"),
+      comunidad: fd.get("comunidad"),
+      lengua: fd.get("lengua"),
+      practicas: fd.get("practicas"),
+      urg_nombre: fd.get("urg_nombre"),
+      urg_parentesco: fd.get("urg_parentesco"),
+      urg_tel: fd.get("urg_tel"),
+      urg_dir: fd.get("urg_dir"),
+      acudientes,
+      // solo metadatos de PDFs por ahora
+      docs: docs.map((f) => ({ nombre: f.name, tipo: "PDF", size: f.size })),
+    };
+
+    // validación mínima
+    if (!payload.num_doc || !payload.nombres || !payload.apellidos) {
+      alert("Faltan campos obligatorios: documento, nombres y apellidos.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const res = await fetch("/api/beneficiarios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert("Error: " + (j.error ?? res.statusText));
+        return;
+      }
+
+      alert(`Guardado ✅\nID: ${j.id}`);
+      limpiar();
+    } catch (e: any) {
+      alert("Error de red: " + (e?.message ?? "Desconocido"));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -111,7 +177,7 @@ export default function BeneficiariosPage() {
         {/* Barra de acciones */}
         <div className="flex items-center justify-end gap-2">
           <Button variant="ghost" onClick={limpiar}>Limpiar</Button>
-          <Button onClick={guardar}>Guardar</Button>
+          <Button onClick={guardar} disabled={saving}>{saving ? "Guardando…" : "Guardar"}</Button>
         </div>
 
         {/* i) Identificación y Ubicación */}
@@ -301,9 +367,7 @@ export default function BeneficiariosPage() {
         {/* vi) Carga de documentos PDF */}
         <Section icon={<Upload size={18} />} title="Documentos (PDF)">
           <div className="grid gap-4">
-            <div
-              className="rounded-md border border-dashed border-[var(--subtle)] bg-[var(--panel)] p-6 text-center"
-            >
+            <div className="rounded-md border border-dashed border-[var(--subtle)] bg-[var(--panel)] p-6 text-center">
               <p className="text-sm text-slate-600 mb-3">
                 Arrastra aquí archivos PDF o selecciona desde tu equipo.
               </p>
@@ -353,7 +417,7 @@ export default function BeneficiariosPage() {
         {/* Pie de acciones */}
         <div className="flex items-center justify-end gap-2">
           <Button variant="ghost" onClick={limpiar}>Limpiar</Button>
-          <Button onClick={guardar}>Guardar</Button>
+          <Button onClick={guardar} disabled={saving}>{saving ? "Guardando…" : "Guardar"}</Button>
         </div>
       </div>
     </DashboardShell>
