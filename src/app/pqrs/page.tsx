@@ -1,18 +1,22 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import DashboardShell from "../_components/DashboardShell";
 import {
   Plus, Search, FileText, User, Paperclip, Clock, CheckCircle2, XCircle, Pencil, MessageSquare, Tag,
 } from "lucide-react";
+import { toast } from "react-hot-toast";
 
-/* ========= Tipos ========= */
+toast.success("Guardado correctamente");
+toast.error("Algo salió mal");
+
+/* ========= Tipos (UI) ========= */
 type Tipo = "Petición" | "Queja" | "Reclamo" | "Sugerencia";
 type Estado = "Abierta" | "En trámite" | "Resuelta" | "Cerrada";
 type Origen = "Beneficiario" | "Tercero";
 type Canal = "Web" | "Teléfono" | "Presencial" | "Email";
 
-type Adj = { name: string; size: number };
+type Adj = { name: string; size?: number; url?: string; mime?: string };
 type Evento = { fecha: string; evento: string; nota?: string };
 
 type PQRS = {
@@ -23,7 +27,7 @@ type PQRS = {
   estado: Estado;
   origen: Origen;
   canal: Canal;
-  solicitante: { doc: string; nombre: string; telefono?: string; email?: string };
+  solicitante: { doc?: string; nombre?: string; telefono?: string; email?: string };
   asunto: string;
   descripcion: string;
   responsable?: string;
@@ -156,61 +160,74 @@ const addDays = (isoDay: string, n: number) => {
 const estadoTone = (e: Estado) =>
   e === "Abierta" ? "sky" : e === "En trámite" ? "amber" : e === "Resuelta" ? "emerald" : "slate";
 
-/* ========= Mock inicial ========= */
-const MOCK: PQRS[] = [
-  {
-    id: "1",
-    radicado: "PQ-2025-0001",
-    fecha: today(),
-    tipo: "Petición",
-    estado: "Abierta",
-    origen: "Beneficiario",
-    canal: "Web",
-    solicitante: { doc: "1050", nombre: "Juan Torres", telefono: "3000000000", email: "juan@correo.com" },
-    asunto: "Solicitud de cita prioritaria",
-    descripcion: "Requiere cita prioritaria por síntoma agudo.",
-    responsable: "Mesa de ayuda",
-    vencimiento: addDays(today(), 15),
-    adjuntos: [],
-    historial: [{ fecha: today(), evento: "Radicado", nota: "Generado por portal web." }],
-  },
-  {
-    id: "2",
-    radicado: "PQ-2025-0002",
-    fecha: today(),
-    tipo: "Queja",
-    estado: "En trámite",
-    origen: "Tercero",
-    canal: "Teléfono",
-    solicitante: { doc: "", nombre: "María Gómez", telefono: "3011111111", email: "" },
-    asunto: "Demora en atención",
-    descripcion: "Reporta demora en atención del servicio.",
-    responsable: "Calidad",
-    vencimiento: addDays(today(), 10),
-    adjuntos: [{ name: "audio-llamada.pdf", size: 120000 }],
-    historial: [
-      { fecha: today(), evento: "Radicado" },
-      { fecha: today(), evento: "Asignado a Calidad", nota: "Ticket derivado." },
-    ],
-  },
-];
+/* ========= Mapas desde backend ========= */
+const backTipo   = { PETICION: "Petición", QUEJA: "Queja", RECLAMO: "Reclamo", SUGERENCIA: "Sugerencia" } as const;
+const backEstado = { ABIERTA: "Abierta", EN_TRAMITE: "En trámite", RESUELTA: "Resuelta", CERRADA: "Cerrada" } as const;
+const backOrigen = { BENEFICIARIO: "Beneficiario", TERCERO: "Tercero" } as const;
+const backCanal  = { WEB: "Web", TELEFONO: "Teléfono", PRESENCIAL: "Presencial", EMAIL: "Email" } as const;
+
+function fromDb(r: any): PQRS {
+  return {
+    id: r.id,
+    radicado: r.radicado,
+    fecha: (r.fecha ?? "").slice(0,10),
+    tipo: backTipo[r.tipo as keyof typeof backTipo],
+    estado: backEstado[r.estado as keyof typeof backEstado],
+    origen: backOrigen[r.origen as keyof typeof backOrigen],
+    canal: backCanal[r.canal as keyof typeof backCanal],
+    solicitante: r.solicitante ?? { doc: "", nombre: "" },
+    asunto: r.asunto,
+    descripcion: r.descripcion,
+    responsable: r.responsable ?? undefined,
+    vencimiento: r.vencimiento ? r.vencimiento.slice(0,10) : undefined,
+    adjuntos: r.adjuntos ?? [],
+    historial: r.historial ?? [],
+  };
+}
+
+/* ========= Llamadas API ========= */
+async function load(setRows: (x: PQRS[]) => void) {
+  const res = await fetch("/api/pqrs?page=1&pageSize=200", { cache: "no-store" });
+  const data = await res.json();
+  setRows((data.items || []).map(fromDb));
+}
+async function apiCreate(p: PQRS) {
+  const resp = await fetch("/api/pqrs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(p),
+  });
+  if (!resp.ok) throw new Error(await resp.text());
+  return resp.json();
+}
+async function apiUpdate(p: PQRS) {
+  const resp = await fetch(`/api/pqrs/${p.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(p),
+  });
+  if (!resp.ok) throw new Error(await resp.text());
+  return resp.json();
+}
 
 /* ========= Página ========= */
 export default function PQRSPage() {
   const title = "PQRS";
-  const [rows, setRows] = useState<PQRS[]>(MOCK);
+  const [rows, setRows] = useState<PQRS[]>([]);
   const [q, setQ] = useState("");
   const [fEstado, setFEstado] = useState<"" | Estado>("");
   const [fTipo, setFTipo] = useState<"" | Tipo>("");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<PQRS | null>(null);
 
+  useEffect(() => { load(setRows); }, []);
+
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();
     return rows.filter((r) => {
       const byQ =
         !t ||
-        [r.radicado, r.asunto, r.solicitante.nombre, r.solicitante.doc, r.responsable || ""]
+        [r.radicado, r.asunto, r.solicitante?.nombre || "", r.solicitante?.doc || "", r.responsable || ""]
           .join(" ")
           .toLowerCase()
           .includes(t);
@@ -221,10 +238,9 @@ export default function PQRSPage() {
   }, [rows, q, fEstado, fTipo]);
 
   const startCreate = () => {
-    const nextNum = (rows.length + 1).toString().padStart(4, "0");
     const draft: PQRS = {
-      id: crypto.randomUUID(),
-      radicado: `PQ-2025-${nextNum}`,
+      id: crypto.randomUUID(),   // el backend creará el verdadero id
+      radicado: "",              // lo genera el backend
       fecha: today(),
       tipo: "Petición",
       estado: "Abierta",
@@ -247,34 +263,60 @@ export default function PQRSPage() {
     setOpen(true);
   };
 
-  const save = () => {
-    if (!editing) return;
-    setRows((prev) => {
-      const i = prev.findIndex((x) => x.id === editing.id);
-      return i === -1 ? [editing, ...prev] : prev.map((x) => (x.id === editing.id ? editing : x));
-    });
-    setOpen(false);
-  };
+const save = async () => {
+  if (!editing) return;
+  const exists = rows.some((x) => x.id === editing.id);
 
-  const cerrar = (row: PQRS) => {
+  try {
+    await toast.promise(
+      exists ? apiUpdate(editing) : apiCreate(editing),
+      {
+        loading: "Guardando...",
+        success: exists ? "PQRS actualizado" : "PQRS creado",
+        error: (e) => e?.message || "Error al guardar",
+      }
+    );
+    await load(setRows);
+    setOpen(false);
+  } catch {}
+};
+
+  const cerrar = async (row: PQRS) => {
     const nota = prompt("Escribe un resumen de cierre:");
     if (nota === null) return;
-    const closed: PQRS = {
-      ...row,
-      estado: "Cerrada",
-      historial: [...row.historial, { fecha: today(), evento: "Cerrada", nota }],
-    };
-    setRows((prev) => prev.map((x) => (x.id === row.id ? closed : x)));
+    try {
+      // endpoint dedicado (si lo creaste)
+      const r = await fetch(`/api/pqrs/${row.id}/close`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nota }),
+      });
+      if (!r.ok) {
+        // fallback con PATCH
+        const hist = [...row.historial, { fecha: today(), evento: "Cerrada", nota }];
+        await fetch(`/api/pqrs/${row.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ estado: "Cerrada", historial: hist }),
+        });
+      }
+      await load(setRows);
+    } catch (e: any) {
+      alert(e.message || "Error al cerrar");
+    }
   };
 
-  const cambiarEstado = (row: PQRS, estado: Estado) => {
-    const nota = estado !== row.estado ? `Cambio de estado a ${estado}` : undefined;
-    const up: PQRS = {
-      ...row,
-      estado,
-      historial: nota ? [...row.historial, { fecha: today(), evento: nota }] : row.historial,
-    };
-    setRows((prev) => prev.map((x) => (x.id === row.id ? up : x)));
+  const cambiarEstado = async (row: PQRS, estado: Estado) => {
+    try {
+      await fetch(`/api/pqrs/${row.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estado }),
+      });
+      await load(setRows);
+    } catch (e: any) {
+      alert(e.message || "Error al cambiar estado");
+    }
   };
 
   const tone = (e: Estado) => estadoTone(e);
@@ -295,7 +337,7 @@ export default function PQRSPage() {
                 placeholder="Buscar radicado, asunto, solicitante..."
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                className="pl-8 w-64"
+                className="w-64 pl-8"
               />
             </div>
             <Select value={fEstado} onChange={(e) => setFEstado(e.target.value as Estado | "")}>
@@ -325,20 +367,18 @@ export default function PQRSPage() {
           <table className="min-w-full text-sm">
             <thead className="border-b border-[var(--subtle)] text-slate-500">
               <tr>
-                <th className="text-left py-2 pl-4 pr-3">Radicado</th>
-                <th className="text-left py-2 px-3">Fecha</th>
-                <th className="text-left py-2 px-3">Tipo</th>
-                <th className="text-left py-2 px-3">Solicitante</th>
-                <th className="text-left py-2 px-3">Estado</th>
-                <th className="text-left py-2 px-3">Responsable</th>
-                <th className="text-left py-2 px-3">SLA</th>
-                <th className="text-left py-2 px-3 w-56">Acciones</th>
+                <th className="py-2 pl-4 pr-3 text-left">Radicado</th>
+                <th className="px-3 py-2 text-left">Fecha</th>
+                <th className="px-3 py-2 text-left">Tipo</th>
+                <th className="px-3 py-2 text-left">Solicitante</th>
+                <th className="px-3 py-2 text-left">Estado</th>
+                <th className="px-3 py-2 text-left">Responsable</th>
+                <th className="px-3 py-2 text-left">SLA</th>
+                <th className="w-56 px-3 py-2 text-left">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((r) => {
-                const daysLeft =
-                  r.vencimiento ? Math.ceil((+new Date(r.vencimiento) - +new Date(r.fecha)) / 86400000) : null;
                 const toneSLA =
                   r.estado === "Cerrada"
                     ? "slate"
@@ -348,32 +388,30 @@ export default function PQRSPage() {
                 return (
                   <tr key={r.id} className="border-b border-[var(--subtle)]/70">
                     <td className="py-2 pl-4 pr-3 font-medium">{r.radicado}</td>
-                    <td className="py-2 px-3">{r.fecha}</td>
-                    <td className="py-2 px-3">{r.tipo}</td>
-                    <td className="py-2 px-3">
+                    <td className="px-3 py-2">{r.fecha}</td>
+                    <td className="px-3 py-2">{r.tipo}</td>
+                    <td className="px-3 py-2">
                       <div className="flex items-center gap-2">
                         <User size={14} className="text-slate-400" />
-                        <span>{r.solicitante.nombre || "—"}</span>
-                        {r.solicitante.doc && <Badge tone="slate">{r.solicitante.doc}</Badge>}
+                        <span>{r.solicitante?.nombre || "—"}</span>
+                        {r.solicitante?.doc && <Badge tone="slate">{r.solicitante.doc}</Badge>}
                       </div>
                     </td>
-                    <td className="py-2 px-3">
+                    <td className="px-3 py-2">
                       <Badge tone={tone(r.estado)}>{r.estado}</Badge>
                     </td>
-                    <td className="py-2 px-3">{r.responsable || "—"}</td>
-                    <td className="py-2 px-3">
+                    <td className="px-3 py-2">{r.responsable || "—"}</td>
+                    <td className="px-3 py-2">
                       {r.vencimiento ? (
                         <span className="inline-flex items-center gap-1">
                           <Clock size={14} className="text-slate-400" />
-                          <Badge tone={toneSLA}>
-                            {r.vencimiento}
-                          </Badge>
+                          <Badge tone={toneSLA}>{r.vencimiento}</Badge>
                         </span>
                       ) : (
                         "—"
                       )}
                     </td>
-                    <td className="py-2 px-3">
+                    <td className="px-3 py-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <Button variant="outline" onClick={() => startEdit(r)}>
                           <Pencil size={14} /> Detalle
@@ -451,7 +489,7 @@ function PQRSModal({
     <Modal
       open={open}
       onClose={() => setOpen(false)}
-      title={`${editing.id ? "Detalle" : "Nuevo"} PQRS — ${editing.radicado}`}
+      title={`${editing.id ? "Detalle" : "Nuevo"} PQRS — ${editing.radicado || "sin radicado"}`}
       actions={
         <>
           <Button variant="ghost" onClick={() => setOpen(false)}>
@@ -461,11 +499,11 @@ function PQRSModal({
         </>
       }
     >
-      <div className="grid lg:grid-cols-3 gap-6">
+      <div className="grid gap-6 lg:grid-cols-3">
         {/* Datos principales */}
-        <div className="lg:col-span-2 grid gap-4">
+        <div className="grid gap-4 lg:col-span-2">
           <Section icon={<FileText size={18} />} title="Datos">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <Field label="Tipo">
                 <Select
                   value={editing.tipo}
@@ -559,17 +597,17 @@ function PQRSModal({
                   <table className="min-w-full text-sm">
                     <thead className="border-b border-[var(--subtle)] text-slate-500">
                       <tr>
-                        <th className="text-left py-2 px-3">Archivo</th>
-                        <th className="text-left py-2 px-3">Tamaño</th>
-                        <th className="text-left py-2 px-3 w-28">Acciones</th>
+                        <th className="px-3 py-2 text-left">Archivo</th>
+                        <th className="px-3 py-2 text-left">Tamaño</th>
+                        <th className="px-3 py-2 text-left w-28">Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
                       {editing.adjuntos.map((a) => (
                         <tr key={a.name} className="border-b border-[var(--subtle)]/70">
-                          <td className="py-2 px-3">{a.name}</td>
-                          <td className="py-2 px-3">{(a.size / 1024).toFixed(1)} KB</td>
-                          <td className="py-2 px-3">
+                          <td className="px-3 py-2">{a.name}</td>
+                          <td className="px-3 py-2">{a.size ? (a.size / 1024).toFixed(1) + " KB" : "—"}</td>
+                          <td className="px-3 py-2">
                             <Button variant="ghost" onClick={() => rmAdj(a.name)}>
                               Quitar
                             </Button>
@@ -588,31 +626,31 @@ function PQRSModal({
         <div className="grid gap-4">
           <Section icon={<Tag size={18} />} title="Solicitante">
             <div className="grid grid-cols-1 gap-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <Field label="Documento">
                   <Input
-                    value={editing.solicitante.doc}
+                    value={editing.solicitante?.doc || ""}
                     onChange={(e) => setEditing({ ...editing, solicitante: { ...editing.solicitante, doc: e.target.value } })}
                     placeholder="CC/CE/TI"
                   />
                 </Field>
                 <Field label="Nombre">
                   <Input
-                    value={editing.solicitante.nombre}
+                    value={editing.solicitante?.nombre || ""}
                     onChange={(e) => setEditing({ ...editing, solicitante: { ...editing.solicitante, nombre: e.target.value } })}
                     placeholder="Nombre completo"
                   />
                 </Field>
                 <Field label="Teléfono">
                   <Input
-                    value={editing.solicitante.telefono || ""}
+                    value={editing.solicitante?.telefono || ""}
                     onChange={(e) => setEditing({ ...editing, solicitante: { ...editing.solicitante, telefono: e.target.value } })}
                     placeholder="300 000 0000"
                   />
                 </Field>
                 <Field label="Email">
                   <Input
-                    value={editing.solicitante.email || ""}
+                    value={editing.solicitante?.email || ""}
                     onChange={(e) => setEditing({ ...editing, solicitante: { ...editing.solicitante, email: e.target.value } })}
                     placeholder="correo@dominio.com"
                   />
