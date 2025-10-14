@@ -239,7 +239,7 @@ export default function PQRSPage() {
 
   const startCreate = () => {
     const draft: PQRS = {
-      id: crypto.randomUUID(),   // el backend creará el verdadero id
+      id: "",                     // ← sin id; lo creará el backend
       radicado: "",              // lo genera el backend
       fecha: today(),
       tipo: "Petición",
@@ -265,14 +265,16 @@ export default function PQRSPage() {
 
 const save = async () => {
   if (!editing) return;
-  const exists = rows.some((x) => x.id === editing.id);
+
+  // Si no hay id => es nuevo (POST). Si hay id => actualizar (PATCH).
+  const isNew = !editing.id;
 
   try {
     await toast.promise(
-      exists ? apiUpdate(editing) : apiCreate(editing),
+      isNew ? apiCreate(editing) : apiUpdate(editing),
       {
-        loading: "Guardando...",
-        success: exists ? "PQRS actualizado" : "PQRS creado",
+        loading: isNew ? "Creando..." : "Actualizando...",
+        success: isNew ? "PQRS creado" : "PQRS actualizado",
         error: (e) => e?.message || "Error al guardar",
       }
     );
@@ -280,6 +282,7 @@ const save = async () => {
     setOpen(false);
   } catch {}
 };
+
 
   const cerrar = async (row: PQRS) => {
     const nota = prompt("Escribe un resumen de cierre:");
