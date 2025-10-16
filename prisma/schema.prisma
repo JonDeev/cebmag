@@ -21,7 +21,7 @@ enum PQRSKind {
 enum PQRSStatus {
   ABIERTA
   EN_TRAMITE
-  RESUELTA
+  RE_ABIERTO
   CERRADA
 }
 

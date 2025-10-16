@@ -24,7 +24,7 @@ export const mapTipo = {
 export const mapEstado = {
   "Abierta": "ABIERTA",
   "En trámite": "EN_TRAMITE",
-  "Resuelta": "RESUELTA",
+  "Re Abierto": "RE_ABIERTO",
   "Cerrada": "CERRADA",
 } as const;
 

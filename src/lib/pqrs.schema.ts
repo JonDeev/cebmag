@@ -26,7 +26,7 @@ export const createPQRSBody = z.object({
 
   fecha: z.string().optional(), // YYYY-MM-DD
   tipo: z.enum(["Petición", "Queja", "Reclamo", "Sugerencia"]),
-  estado: z.enum(["Abierta", "En trámite", "Resuelta", "Cerrada"]).optional().default("Abierta"),
+  estado: z.enum(["Abierta", "En trámite", "Re Abierto", "Cerrada"]).optional().default("Abierta"),
   origen: z.enum(["Beneficiario", "Tercero"]),
   canal: z.enum(["Web", "Teléfono", "Presencial", "Email"]),
 
