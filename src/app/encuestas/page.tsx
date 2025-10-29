@@ -429,45 +429,51 @@ export default function EncuestasPage() {
                   </p>
                 ) : (
                   <div className="grid gap-4">
-                    {resultados.map((r: any, idx: number) => (
-                      <div
-                        key={r.pid}
-                        className="rounded border border-[var(--subtle)] bg-white p-3"
-                      >
-                        <div className="mb-2 text-sm font-medium">
-                          {encSel.preguntas[idx].texto}
+                    {resultados.map((r: any) => {
+                      const pregunta = encSel.preguntas.find((p) => p.id === r.pid);
+                      if (!pregunta) return null; // evita el error
+
+                      return (
+                        <div key={r.pid} className="rounded border border-[var(--subtle)] bg-white p-3">
+                          <div className="mb-2 text-sm font-medium">
+                            {pregunta.texto}
+                          </div>
+
+                          {r.tipo === "likert" && (
+                            <div className="text-xs text-slate-600">
+                              Promedio: <b>{r.avg.toFixed(1)}</b> / 5
+                            </div>
+                          )}
+
+                          {r.tipo === "si_no" && (
+                            <div className="flex gap-3 text-sm">
+                              <span>SI: {r.dist.SI}</span>
+                              <span>NO: {r.dist.NO}</span>
+                              <span>Total: {r.total}</span>
+                            </div>
+                          )}
+
+                          {r.tipo === "opciones" && (
+                            <ul className="space-y-1 text-sm">
+                              {Object.entries(r.dist).map(([op, c]: any) => {
+                                const pct = Math.round((c / r.total) * 100);
+                                return (
+                                  <li key={op}>
+                                    {op}: {c} ({pct}%)
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+
+                          {r.tipo === "texto" && (
+                            <div className="text-sm text-slate-600">
+                              Respuestas abiertas: <b>{r.total}</b>
+                            </div>
+                          )}
                         </div>
-                        {r.tipo === "likert" && (
-                          <div className="text-xs text-slate-600">
-                            Promedio: <b>{r.avg.toFixed(1)}</b> / 5
-                          </div>
-                        )}
-                        {r.tipo === "si_no" && (
-                          <div className="flex gap-3 text-sm">
-                            <span>SI: {r.dist.SI}</span>
-                            <span>NO: {r.dist.NO}</span>
-                            <span>Total: {r.total}</span>
-                          </div>
-                        )}
-                        {r.tipo === "opciones" && (
-                          <ul className="space-y-1 text-sm">
-                            {Object.entries(r.dist).map(([op, c]: any) => {
-                              const pct = Math.round((c / r.total) * 100);
-                              return (
-                                <li key={op}>
-                                  {op}: {c} ({pct}%)
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        )}
-                        {r.tipo === "texto" && (
-                          <div className="text-sm text-slate-600">
-                            Respuestas abiertas: <b>{r.total}</b>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </Section>
