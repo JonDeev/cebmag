@@ -20,11 +20,13 @@ type Estado = "BORRADOR" | "ACTIVA" | "INACTIVA";
 type TipoPregunta = "likert" | "si_no" | "opciones" | "texto";
 
 interface Pregunta {
-  id: string;
+  id?: string;          // viene del backend
+  tempId?: string;      // solo para el frontend (no se guarda)
   texto: string;
   tipo: TipoPregunta;
   opciones?: string[];
 }
+
 
 interface Encuesta {
   id?: string;
@@ -223,7 +225,7 @@ export default function EncuestasPage() {
       servicio: draft.servicio,
       estado: draft.estado,
       descripcion: draft.descripcion,
-      preguntas: draft.preguntas,
+      preguntas: draft.preguntas.map(({ tempId, ...rest }) => rest),
     };
 
     let saved;
@@ -406,7 +408,7 @@ export default function EncuestasPage() {
                   <ol className="mt-2 space-y-2">
                     {encSel.preguntas.map((p, i) => (
                       <li
-                        key={p.id}
+                        key={p.id || p.tempId}
                         className="rounded border border-[var(--subtle)] bg-white p-3"
                       >
                         <div className="flex items-center justify-between">
@@ -550,7 +552,7 @@ function EncuestaModal({
 
   const addPregunta = (tipo: TipoPregunta) => {
     const p: Pregunta = {
-      id: "", // el backend generará el id
+      tempId: Math.random().toString(36).substring(2, 10), // id temporal
       texto: "Nueva pregunta",
       tipo,
       opciones: tipo === "opciones" ? ["Opción 1", "Opción 2"] : [],
@@ -559,11 +561,15 @@ function EncuestaModal({
   };
 
 
-  const rmPregunta = (id: string) =>
+  const rmPregunta = (id?: string) => {
+    if (!id) return; // si aún no tiene id, no hace nada
     setDraft({
       ...draft,
-      preguntas: draft.preguntas.filter((p) => p.id !== id),
+      preguntas: draft.preguntas.filter(
+        (p) => p.id !== id && p.tempId !== id // cubrimos ambos casos
+      ),
     });
+  };
 
   return (
     <Modal
@@ -651,9 +657,53 @@ function EncuestaModal({
           <ol className="space-y-2">
             {draft.preguntas.map((p, idx) => (
               <li
-                key={p.id}
+                key={p.id || p.tempId}
                 className="rounded border border-[var(--subtle)] bg-white p-3"
               >
+                {p.tipo === "opciones" && (
+                  <div className="grid gap-2 mt-3">
+                    <div className="text-sm font-medium">Opciones</div>
+                    {(p.opciones || []).map((op, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <Input
+                          value={op}
+                          onChange={(e) => {
+                            const arr = [...draft.preguntas];
+                            const opciones = [...(p.opciones || [])];
+                            opciones[i] = e.target.value;
+                            arr[idx] = { ...p, opciones };
+                            setDraft({ ...draft, preguntas: arr });
+                          }}
+                        />
+                        <Button
+                          variant="ghost"
+                          onClick={() => {
+                            const arr = [...draft.preguntas];
+                            const opciones = (p.opciones || []).filter((_, j) => j !== i);
+                            arr[idx] = { ...p, opciones };
+                            setDraft({ ...draft, preguntas: arr });
+                          }}
+                          title="Quitar opción"
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      </div>
+                    ))}
+
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const arr = [...draft.preguntas];
+                        const opciones = [...(p.opciones || []), `Opción ${p.opciones?.length ? p.opciones.length + 1 : 1}`];
+                        arr[idx] = { ...p, opciones };
+                        setDraft({ ...draft, preguntas: arr });
+                      }}
+                    >
+                      <Plus size={14} /> Agregar opción
+                    </Button>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between gap-2">
                   <Input
                     value={p.texto}
@@ -665,7 +715,7 @@ function EncuestaModal({
                   />
                   <Button
                     variant="ghost"
-                    onClick={() => rmPregunta(p.id)}
+                    onClick={() => rmPregunta(p.id || p.tempId)}
                     title="Eliminar"
                   >
                     <Trash2 size={14} />
@@ -759,7 +809,7 @@ function RespuestaModal({
         <div className="md:col-span-2">
           {encuesta.preguntas.map((p, idx) => (
             <div
-              key={p.id}
+              key={p.id || p.tempId}
               className="rounded border border-[var(--subtle)] bg-white p-3 mb-2"
             >
               <div className="mb-1 text-sm font-medium">
@@ -789,8 +839,8 @@ function RespuestaModal({
                         type="radio"
                         name={p.id}
                         value={v}
-                        checked={draft.valores[p.id] === v}
-                        onChange={() => setVal(p.id, v)}
+                        checked={draft.valores[p.id || p.tempId] === v}
+                        onChange={() => setVal(p.id || p.tempId, v)}
                       />{" "}
                       {v}
                     </label>
