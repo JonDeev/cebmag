@@ -204,16 +204,17 @@ export default function EncuestasPage() {
   );
 
   /* ==================== CRUD ==================== */
-  const nuevaEncuesta = () => {
-    setDraft({
-      titulo: "Nueva encuesta",
-      servicio: "",
-      estado: "BORRADOR",
-      descripcion: "",
-      preguntas: [],
-    });
-    setOpenEdit(true);
-  };
+    const nuevaEncuesta = () => {
+      setDraft({
+        titulo: "Nueva encuesta",
+        servicio: "",
+        estado: "BORRADOR",
+        descripcion: "",
+        preguntas: [],
+      });
+      setOpenEdit(true);
+    };
+
 
   const guardarEncuesta = async () => {
     if (!draft) return;
@@ -549,13 +550,14 @@ function EncuestaModal({
 
   const addPregunta = (tipo: TipoPregunta) => {
     const p: Pregunta = {
-      id: crypto.randomUUID(),
+      id: "", // el backend generará el id
       texto: "Nueva pregunta",
       tipo,
       opciones: tipo === "opciones" ? ["Opción 1", "Opción 2"] : [],
     };
     setDraft({ ...draft, preguntas: [...draft.preguntas, p] });
   };
+
 
   const rmPregunta = (id: string) =>
     setDraft({
