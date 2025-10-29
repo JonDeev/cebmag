@@ -3,7 +3,7 @@
 import { useState } from "react";
 import DashboardShell from "../_components/DashboardShell";
 import {
-  IdCard, Stethoscope, Palette, PhoneCall, UserPlus, Upload, Trash2, Plus,
+  IdCard, Stethoscope, Palette, PhoneCall, UserPlus, Upload, Trash2, Plus, Search,
 } from "lucide-react";
 
 /* ---------- UI helpers (inputs básicos) ---------- */
@@ -98,11 +98,83 @@ export default function BeneficiariosPage() {
     setAcudientes((a) => a.map((x, i) => (i === idx ? { ...x, ...patch } : x)));
 
   const [saving, setSaving] = useState(false);
+  const [searching, setSearching] = useState(false);
 
   const limpiar = () => {
     setDocs([]);
     setAcudientes([{ nombre: "", parentesco: "", telefono: "", direccion: "" }]);
     (document.getElementById("benef-form") as HTMLFormElement | null)?.reset();
+  };
+
+  const buscar = async () => {
+    const tipo = (document.querySelector("[name='tipo_doc']") as HTMLSelectElement)?.value;
+    const doc = (document.querySelector("[name='num_doc']") as HTMLInputElement)?.value;
+    if (!tipo || !doc) {
+      alert("Ingrese tipo y número de documento para buscar.");
+      return;
+    }
+
+    try {
+      setSearching(true);
+      const res = await fetch(`/api/beneficiarios/buscar?tipo=${encodeURIComponent(tipo)}&doc=${encodeURIComponent(doc)}`);
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j?.error ?? "Error al buscar beneficiario.");
+      }
+      const data = await res.json();
+
+      if (!data) {
+        alert("No se encontró ningún beneficiario con esos datos.");
+        return;
+      }
+
+      // Rellenar formulario con los datos encontrados
+      const form = document.getElementById("benef-form") as HTMLFormElement | null;
+      if (!form) return;
+
+      const fill = (name: string, val?: string) => {
+        const el = form.querySelector(`[name='${name}']`) as
+          | HTMLInputElement
+          | HTMLSelectElement
+          | HTMLTextAreaElement
+          | null;
+        if (el && val !== undefined && val !== null) el.value = String(val);
+      };
+
+      fill("tipo_doc", data.tipo_doc);
+      fill("num_doc", data.num_doc);
+      fill("fecha_nac", data.fecha_nac);
+      fill("nombres", data.nombres);
+      fill("apellidos", data.apellidos);
+      fill("sexo", data.sexo);
+      fill("direccion", data.direccion);
+      fill("barrio", data.barrio);
+      fill("ciudad", data.ciudad);
+      fill("dpto", data.dpto);
+      fill("zona", data.zona);
+      fill("telefono", data.telefono);
+      fill("eps", data.eps);
+      fill("rh", data.rh);
+      fill("discapacidad", data.discapacidad);
+      fill("alergias", data.alergias);
+      fill("medicamentos", data.medicamentos);
+      fill("antecedentes", data.antecedentes);
+      fill("comunidad", data.comunidad);
+      fill("lengua", data.lengua);
+      fill("practicas", data.practicas);
+      fill("urg_nombre", data.urg_nombre);
+      fill("urg_parentesco", data.urg_parentesco);
+      fill("urg_tel", data.urg_tel);
+      fill("urg_dir", data.urg_dir);
+
+      if (Array.isArray(data.acudientes)) setAcudientes(data.acudientes);
+
+      alert("Beneficiario encontrado ✅");
+    } catch (e: any) {
+      alert("Error: " + (e?.message ?? "Desconocido"));
+    } finally {
+      setSearching(false);
+    }
   };
 
   const guardar = async () => {
@@ -192,9 +264,17 @@ export default function BeneficiariosPage() {
                 <option value="PA">Pasaporte (PA)</option>
               </Select>
             </Field>
+
             <Field label="Número de documento">
-              <Input name="num_doc" placeholder="11223344" />
+              <div className="flex gap-2">
+                <Input name="num_doc" placeholder="11223344" className="flex-1" />
+                <Button variant="outline" type="button" onClick={buscar} disabled={searching} title="Buscar beneficiario">
+                  <Search size={16} />
+                  {searching ? "Buscando…" : "Buscar"}
+                </Button>
+              </div>
             </Field>
+
             <Field label="Fecha de nacimiento">
               <Input type="date" name="fecha_nac" />
             </Field>
