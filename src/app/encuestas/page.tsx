@@ -15,6 +15,9 @@ import {
 } from "@/lib/encuestas.api";
 import toast from "react-hot-toast";
 
+const genQId = () => `q_${Math.random().toString(36).slice(2, 10)}`;
+
+
 /* ==================== Tipos ==================== */
 type Estado = "BORRADOR" | "ACTIVA" | "INACTIVA";
 type TipoPregunta = "likert" | "si_no" | "opciones" | "texto";
@@ -39,9 +42,14 @@ interface Encuesta {
 
 interface Respuesta {
   encuestaId: string;
-  respondente: { doc?: string; nombre?: string };
+  respondente: {
+    tipo_doc?: "CC" | "TI" | "CE" | "RC" | "PA";
+    doc?: string;
+    nombre?: string;
+  };
   valores: Record<string, number | "SI" | "NO" | string>;
 }
+
 
 /* ==================== Helpers UI ==================== */
 function Button({
@@ -173,10 +181,26 @@ export default function EncuestasPage() {
   useEffect(() => {
     (async () => {
       const data = await getEncuestas();
-      setEncuestas(data);
-      if (data.length > 0 && !sel) setSel(data[0].id!);
+
+      // Arregla encuestas viejas sin id en preguntas
+      const fixed = await Promise.all(
+        data.map(async (e) => {
+          const needsFix = e.preguntas.some((p) => !p.id);
+          if (needsFix && e.id) {
+            const preguntas = e.preguntas.map((p) => ({ ...p, id: p.id ?? genQId() }));
+            // Persistimos la reparación para que quede estable
+            await updateEncuesta(e.id, { ...e, preguntas });
+            return { ...e, preguntas };
+          }
+          return e;
+        })
+      );
+
+      setEncuestas(fixed);
+      if (fixed.length > 0 && !sel) setSel(fixed[0].id!);
     })();
   }, []);
+
 
   useEffect(() => {
     if (!sel) return;
@@ -217,26 +241,35 @@ export default function EncuestasPage() {
     setOpenEdit(true);
   };
 
-  const guardarEncuesta = async () => {
-    if (!draft) return;
-    const data = {
-      titulo: draft.titulo,
-      servicio: draft.servicio,
-      estado: draft.estado,
-      descripcion: draft.descripcion,
-      preguntas: draft.preguntas.map(({ tempId, ...rest }) => rest),
-    };
+const guardarEncuesta = async () => {
+  if (!draft) return;
 
-    let saved;
-    if (draft.id) saved = await updateEncuesta(draft.id, data);
-    else saved = await createEncuesta(data);
+  // Normaliza ids de preguntas
+  const preguntasNormalizadas = draft.preguntas.map((p) => ({
+    ...p,
+    id: p.id ?? p.tempId ?? genQId(),  // 👈 garantiza id
+    tempId: undefined,                 // 👈 no persistimos tempId
+  }));
 
-    if (saved) {
-      const updated = await getEncuestas();
-      setEncuestas(updated);
-      setOpenEdit(false);
-    }
+  const data = {
+    titulo: draft.titulo,
+    servicio: draft.servicio,
+    estado: draft.estado,
+    descripcion: draft.descripcion,
+    preguntas: preguntasNormalizadas,
   };
+
+  let saved;
+  if (draft.id) saved = await updateEncuesta(draft.id, data);
+  else saved = await createEncuesta(data);
+
+  if (saved) {
+    const updated = await getEncuestas();
+    setEncuestas(updated);
+    setOpenEdit(false);
+  }
+};
+
 
 const eliminarEncuesta = async () => {
   if (!targetDelete) return;
@@ -255,7 +288,7 @@ const eliminarEncuesta = async () => {
   const registrarResp = (e: Encuesta) => {
     const r: Respuesta = {
       encuestaId: e.id!,
-      respondente: {},
+      respondente: {tipo_doc: "CC"},
       valores: {},
     };
     setRespDraft(r);
@@ -264,12 +297,20 @@ const eliminarEncuesta = async () => {
 
   const guardarResp = async () => {
     if (!respDraft) return;
-    const saved = await saveRespuesta(respDraft);
-    if (saved) {
+    try {
+      const saved = await saveRespuesta(respDraft);
       toast.success("Respuesta registrada");
       const updated = await getEncuestas();
       setEncuestas(updated);
       setOpenResp(false);
+    } catch (err: any) {
+      // Muestra exactamente lo que devolvió el backend
+      const msg =
+        err?.message ||
+        err?.toString?.() ||
+        "Error desconocido al guardar la respuesta";
+      console.error("[guardarResp] error:", err);
+      toast.error(msg);
     }
   };
 
@@ -544,13 +585,15 @@ function EncuestaModal({
 
   const addPregunta = (tipo: TipoPregunta) => {
     const p: Pregunta = {
-      tempId: Math.random().toString(36).substring(2, 10), // id temporal
+      id: genQId(),              // 👈 id estable (se guarda en BD)
+      tempId: undefined,
       texto: "Nueva pregunta",
       tipo,
       opciones: tipo === "opciones" ? ["Opción 1", "Opción 2"] : [],
     };
     setDraft({ ...draft, preguntas: [...draft.preguntas, p] });
   };
+
 
 
   const rmPregunta = (id?: string) => {
@@ -744,6 +787,17 @@ function RespuestaModal({
   onSave: () => void;
 }) {
   if (!encuesta || !draft) return null;
+  // Si por alguna razón abrimos sin tipo_doc, lo inicializamos a "CC"
+useEffect(() => {
+  if (draft && (!draft.respondente || !draft.respondente.tipo_doc)) {
+    setDraft({
+      ...draft,
+      respondente: { ...(draft.respondente || {}), tipo_doc: "CC" },
+    });
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [open]); // se ejecuta al abrir el modal
+
   const setVal = (pid: string, val: number | "SI" | "NO" | string) =>
     setDraft({ ...draft, valores: { ...draft.valores, [pid]: val } });
 
@@ -765,11 +819,34 @@ function RespuestaModal({
       wide
     >
       <div className="grid gap-6 md:grid-cols-3">
-        <div>
+        {/* -------- Columna izquierda: datos del respondente -------- */}
+        <div className="grid gap-3">
+          <label className="text-sm">
+            Tipo de documento
+            <Select
+              value={draft.respondente?.tipo_doc ?? "CC"}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  respondente: {
+                    ...(draft.respondente || {}),
+                    tipo_doc: e.target.value as Respuesta["respondente"]["tipo_doc"],
+                  },
+                })
+              }
+            >
+              <option value="CC">Cédula de Ciudadanía (CC)</option>
+              <option value="TI">Tarjeta de Identidad (TI)</option>
+              <option value="CE">Cédula de Extranjería (CE)</option>
+              <option value="RC">Registro Civil (RC)</option>
+              <option value="PA">Pasaporte (PA)</option>
+            </Select>
+          </label>
+
           <label className="text-sm">
             Documento
             <Input
-              value={draft.respondente.doc || ""}
+              value={draft.respondente?.doc || ""}
               onChange={(e) =>
                 setDraft({
                   ...draft,
@@ -781,10 +858,11 @@ function RespuestaModal({
               }
             />
           </label>
-          <label className="mt-2 text-sm">
+
+          <label className="text-sm">
             Nombre
             <Input
-              value={draft.respondente.nombre || ""}
+              value={draft.respondente?.nombre || ""}
               onChange={(e) =>
                 setDraft({
                   ...draft,
@@ -797,75 +875,79 @@ function RespuestaModal({
             />
           </label>
         </div>
+
+        {/* -------- Columna derecha: preguntas -------- */}
         <div className="md:col-span-2">
-          {encuesta.preguntas.map((p, idx) => (
-            <div
-              key={p.id}
-              className="rounded border border-[var(--subtle)] bg-white p-3 mb-2"
-            >
-              <div className="mb-1 text-sm font-medium">
-                P{idx + 1}. {p.texto}
+          {encuesta.preguntas.map((p, idx) => {
+            const qid = p.id ?? p.tempId ?? `idx_${idx}`;
+            return (
+              <div key={qid} className="rounded border border-[var(--subtle)] bg-white p-3 mb-2">
+                <div className="mb-1 text-sm font-medium">
+                  P{idx + 1}. {p.texto}
+                </div>
+
+                {p.tipo === "likert" && (
+                  <div className="flex gap-2">
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <label key={n} className="text-sm">
+                        <input
+                          type="radio"
+                          name={`preg_${qid}`}
+                          checked={draft.valores[qid] === n}
+                          onChange={() => setVal(qid, n)}
+                        />{" "}
+                        {n}
+                      </label>
+                    ))}
+                  </div>
+                )}
+
+                {p.tipo === "si_no" && (
+                  <div className="flex gap-3">
+                    {(["SI", "NO"] as const).map((v) => (
+                      <label key={v} className="text-sm">
+                        <input
+                          type="radio"
+                          name={`preg_${qid}`}
+                          checked={draft.valores[qid] === v}
+                          onChange={() => setVal(qid, v)}
+                        />{" "}
+                        {v}
+                      </label>
+                    ))}
+                  </div>
+                )}
+
+                {p.tipo === "opciones" && (
+                  <div className="flex flex-col gap-1">
+                    {(p.opciones || []).map((op) => (
+                      <label key={op} className="text-sm">
+                        <input
+                          type="radio"
+                          name={`preg_${qid}`}
+                          checked={draft.valores[qid] === op}
+                          onChange={() => setVal(qid, op)}
+                        />{" "}
+                        {op}
+                      </label>
+                    ))}
+                  </div>
+                )}
+
+                {p.tipo === "texto" && (
+                  <Textarea
+                    rows={2}
+                    value={(draft.valores[qid] as string) || ""}
+                    onChange={(e) => setVal(qid, e.target.value)}
+                    placeholder="Tu comentario..."
+                  />
+                )}
               </div>
-              {p.tipo === "likert" && (
-                <div className="flex gap-2">
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <label key={n} className="text-sm">
-                      <input
-                        type="radio"
-                        name={`preg_${p.id || p.tempId}`}
-                        value={n}
-                        checked={draft.valores[p.id || p.tempId] === n}
-                        onChange={() => setVal(p.id || p.tempId, n)}
-                      />{" "}
-                      {n}
-                    </label>
-                  ))}
-                </div>
-              )}
-              {p.tipo === "si_no" && (
-                <div className="flex gap-3">
-                  {(["SI", "NO"] as const).map((v) => (
-                    <label key={v} className="text-sm">
-                      <input
-                        type="radio"
-                        name={`preg_${p.id || p.tempId}`}
-                        value={v}
-                        checked={draft.valores[p.id || p.tempId] === v}
-                        onChange={() => setVal(p.id || p.tempId, v)}
-                      />{" "}
-                      {v}
-                    </label>
-                  ))}
-                </div>
-              )}
-              {p.tipo === "opciones" && (
-                <div className="flex flex-col gap-1">
-                  {p.opciones?.map((op) => (
-                    <label key={op} className="text-sm">
-                      <input
-                        type="radio"
-                        name={`preg_${p.id || p.tempId}`}
-                        value={op}
-                        checked={draft.valores[p.id || p.tempId] === op}
-                        onChange={() => setVal(p.id || p.tempId, op)}
-                      />{" "}
-                      {op}
-                    </label>
-                  ))}
-                </div>
-              )}
-              {p.tipo === "texto" && (
-                <Textarea
-                  rows={2}
-                  value={(draft.valores[p.id || p.tempId] as string) || ""}
-                  onChange={(e) => setVal(p.id || p.tempId, e.target.value)}  
-                  placeholder="Tu comentario..."
-                />
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </Modal>
   );
 }
+

@@ -1,51 +1,61 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-/**
- * Crea una nueva respuesta asociada a una encuesta.
- * Endpoint: POST /api/encuestas/[id]/respuestas
- */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+// Next.js 15+: params es "async". Debes esperarlo.
+export async function POST(
+  req: Request,
+  ctx: { params: Promise<{ id: string }> }
+) {
   try {
-    const body = await req.json();
-
-    // Validaciones mínimas
-    if (!body.valores || typeof body.valores !== "object") {
-      return NextResponse.json({ error: "Faltan valores de respuesta válidos" }, { status: 400 });
+    const { id } = await ctx.params; // ✅ await
+    if (!id) {
+      return NextResponse.json(
+        { error: "Falta el parámetro id de la encuesta" },
+        { status: 400 }
+      );
     }
 
-    // Crear respuesta en la BD
-    const respuesta = await prisma.respuesta.create({
+    const body = await req.json().catch(() => ({}));
+    const respondente = body?.respondente ?? {};
+    const valores = body?.valores ?? {};
+
+    if (!valores || typeof valores !== "object" || Array.isArray(valores)) {
+      return NextResponse.json(
+        { error: "El campo 'valores' es obligatorio y debe ser un objeto" },
+        { status: 400 }
+      );
+    }
+
+    // (Opcional) valida que exista la encuesta
+    const enc = await prisma.encuesta.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!enc) {
+      return NextResponse.json(
+        { error: "Encuesta no encontrada" },
+        { status: 404 }
+      );
+    }
+
+    // ✅ Tu schema actual no tiene 'respondente' JSON; usa estos campos:
+    // Respuesta { id, encuestaId, fecha, tipo_doc?, documento?, nombre?, valores Json, ... }
+    const created = await prisma.respuesta.create({
       data: {
-        encuestaId: params.id,
-        tipo_doc: body.respondente?.tipo_doc || null,
-        documento: body.respondente?.doc || null,
-        nombre: body.respondente?.nombre || null,
-        valores: body.valores,
+        encuestaId: id,
+        tipo_doc: respondente.tipo_doc ?? null,
+        documento: respondente.doc ?? null,
+        nombre: respondente.nombre ?? null,
+        valores,
       },
     });
 
-    return NextResponse.json(respuesta, { status: 201 });
-  } catch (error) {
-    console.error("❌ Error al guardar respuesta:", error);
-    return NextResponse.json({ error: "Error interno al guardar respuesta" }, { status: 500 });
-  }
-}
-
-/**
- * Lista todas las respuestas de una encuesta.
- * Endpoint: GET /api/encuestas/[id]/respuestas
- */
-export async function GET(req: Request, { params }: { params: { id: string } }) {
-  try {
-    const respuestas = await prisma.respuesta.findMany({
-      where: { encuestaId: params.id },
-      orderBy: { fecha: "desc" },
-    });
-
-    return NextResponse.json(respuestas);
-  } catch (error) {
-    console.error("❌ Error al obtener respuestas:", error);
-    return NextResponse.json({ error: "Error interno al obtener respuestas" }, { status: 500 });
+    return NextResponse.json(created, { status: 201 });
+  } catch (err: any) {
+    console.error("[API respuestas] error:", err);
+    return NextResponse.json(
+      { error: err?.message || "Error inesperado al guardar la respuesta" },
+      { status: 500 }
+    );
   }
 }

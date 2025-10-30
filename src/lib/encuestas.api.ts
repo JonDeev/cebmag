@@ -65,23 +65,40 @@ export async function deleteEncuesta(id: string) {
 }
 
 // ===== Guardar respuesta =====
-export async function saveRespuesta(data: any) {
-  const t = toast.loading("Guardando respuesta...");
+export async function saveRespuesta(r: {
+  encuestaId: string;
+  respondente?: { doc?: string; nombre?: string };
+  valores: Record<string, any>;
+}) {
+  const res = await fetch(`/api/encuestas/${r.encuestaId}/respuestas`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      respondente: r.respondente ?? {},
+      valores: r.valores ?? {},
+    }),
+  });
+
+  // Leemos el cuerpo siempre (texto) para no perder el mensaje del backend
+  const raw = await res.text();
+  let data: any = null;
   try {
-    const res = await fetch("/api/encuestas/respuestas", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) throw new Error("Error al registrar respuesta");
-    const json = await res.json();
-    toast.success("Respuesta registrada", { id: t });
-    return json;
-  } catch (e: any) {
-    toast.error(e.message || "Error al guardar respuesta", { id: t });
-    return null;
+    data = raw ? JSON.parse(raw) : null;
+  } catch {
+    // si no es JSON, dejamos el texto crudo
+    data = raw;
   }
+
+  if (!res.ok) {
+    const message =
+      (typeof data === "object" ? data?.error || data?.message : data) ||
+      `HTTP ${res.status}`;
+    throw new Error(message);
+  }
+
+  return data;
 }
+
 
 // ===== Resultados Encuestas =====
 
