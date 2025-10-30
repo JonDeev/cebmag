@@ -20,13 +20,12 @@ type Estado = "BORRADOR" | "ACTIVA" | "INACTIVA";
 type TipoPregunta = "likert" | "si_no" | "opciones" | "texto";
 
 interface Pregunta {
-  id?: string;          // viene del backend
-  tempId?: string;      // solo para el frontend (no se guarda)
+  id?: string;
+  tempId?: string;
   texto: string;
   tipo: TipoPregunta;
   opciones?: string[];
 }
-
 
 interface Encuesta {
   id?: string;
@@ -170,6 +169,7 @@ export default function EncuestasPage() {
   const [openDelete, setOpenDelete] = useState(false);
   const [targetDelete, setTargetDelete] = useState<Encuesta | null>(null);
 
+
   useEffect(() => {
     (async () => {
       const data = await getEncuestas();
@@ -206,17 +206,16 @@ export default function EncuestasPage() {
   );
 
   /* ==================== CRUD ==================== */
-    const nuevaEncuesta = () => {
-      setDraft({
-        titulo: "Nueva encuesta",
-        servicio: "",
-        estado: "BORRADOR",
-        descripcion: "",
-        preguntas: [],
-      });
-      setOpenEdit(true);
-    };
-
+  const nuevaEncuesta = () => {
+    setDraft({
+      titulo: "Nueva encuesta",
+      servicio: "",
+      estado: "BORRADOR",
+      descripcion: "",
+      preguntas: [],
+    });
+    setOpenEdit(true);
+  };
 
   const guardarEncuesta = async () => {
     if (!draft) return;
@@ -239,19 +238,18 @@ export default function EncuestasPage() {
     }
   };
 
-  const eliminarEncuesta = async () => {
-    if (!targetDelete) return;
-    const ok = await deleteEncuesta(targetDelete.id!);
-    if (ok) {
-      const data = await getEncuestas();
-      setEncuestas(data);
-      if (sel === targetDelete.id) setSel(null);
-      toast.success("Encuesta eliminada correctamente");
-    }
-    setOpenDelete(false);
-    setTargetDelete(null);
-  };
-
+const eliminarEncuesta = async () => {
+  if (!targetDelete) return;
+  const ok = await deleteEncuesta(targetDelete.id!);
+  if (ok) {
+    const data = await getEncuestas();
+    setEncuestas(data);
+    if (sel === targetDelete.id) setSel(null);
+    toast.success("Encuesta eliminada correctamente");
+  }
+  setOpenDelete(false);
+  setTargetDelete(null);
+};
 
   /* ==================== Respuestas ==================== */
   const registrarResp = (e: Encuesta) => {
@@ -342,16 +340,16 @@ export default function EncuestasPage() {
                       >
                         <Play size={14} />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        onClick={() => {
-                          setTargetDelete(e);
-                          setOpenDelete(true);
-                        }}
-                        title="Eliminar"
-                      >
-                        <Trash2 size={14} />
-                      </Button>
+                     <Button
+                      variant="ghost"
+                      onClick={() => {
+                        setTargetDelete(e);
+                        setOpenDelete(true);
+                      }}
+                      title="Eliminar"
+                    >
+                      <Trash2 size={14} />
+                    </Button>
                     </div>
                   </div>
                 </li>
@@ -408,7 +406,7 @@ export default function EncuestasPage() {
                   <ol className="mt-2 space-y-2">
                     {encSel.preguntas.map((p, i) => (
                       <li
-                        key={p.id || p.tempId}
+                        key={p.id}
                         className="rounded border border-[var(--subtle)] bg-white p-3"
                       >
                         <div className="flex items-center justify-between">
@@ -432,51 +430,45 @@ export default function EncuestasPage() {
                   </p>
                 ) : (
                   <div className="grid gap-4">
-                    {resultados.map((r: any) => {
-                      const pregunta = encSel.preguntas.find((p) => p.id === r.pid);
-                      if (!pregunta) return null; // evita el error
-
-                      return (
-                        <div key={r.pid} className="rounded border border-[var(--subtle)] bg-white p-3">
-                          <div className="mb-2 text-sm font-medium">
-                            {pregunta.texto}
-                          </div>
-
-                          {r.tipo === "likert" && (
-                            <div className="text-xs text-slate-600">
-                              Promedio: <b>{r.avg.toFixed(1)}</b> / 5
-                            </div>
-                          )}
-
-                          {r.tipo === "si_no" && (
-                            <div className="flex gap-3 text-sm">
-                              <span>SI: {r.dist.SI}</span>
-                              <span>NO: {r.dist.NO}</span>
-                              <span>Total: {r.total}</span>
-                            </div>
-                          )}
-
-                          {r.tipo === "opciones" && (
-                            <ul className="space-y-1 text-sm">
-                              {Object.entries(r.dist).map(([op, c]: any) => {
-                                const pct = Math.round((c / r.total) * 100);
-                                return (
-                                  <li key={op}>
-                                    {op}: {c} ({pct}%)
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          )}
-
-                          {r.tipo === "texto" && (
-                            <div className="text-sm text-slate-600">
-                              Respuestas abiertas: <b>{r.total}</b>
-                            </div>
-                          )}
+                    {resultados.map((r: any, idx: number) => (
+                      <div
+                        key={r.pid}
+                        className="rounded border border-[var(--subtle)] bg-white p-3"
+                      >
+                        <div className="mb-2 text-sm font-medium">
+                          {encSel.preguntas[idx].texto}
                         </div>
-                      );
-                    })}
+                        {r.tipo === "likert" && (
+                          <div className="text-xs text-slate-600">
+                            Promedio: <b>{r.avg.toFixed(1)}</b> / 5
+                          </div>
+                        )}
+                        {r.tipo === "si_no" && (
+                          <div className="flex gap-3 text-sm">
+                            <span>SI: {r.dist.SI}</span>
+                            <span>NO: {r.dist.NO}</span>
+                            <span>Total: {r.total}</span>
+                          </div>
+                        )}
+                        {r.tipo === "opciones" && (
+                          <ul className="space-y-1 text-sm">
+                            {Object.entries(r.dist).map(([op, c]: any) => {
+                              const pct = Math.round((c / r.total) * 100);
+                              return (
+                                <li key={op}>
+                                  {op}: {c} ({pct}%)
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                        {r.tipo === "texto" && (
+                          <div className="text-sm text-slate-600">
+                            Respuestas abiertas: <b>{r.total}</b>
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
               </Section>
@@ -571,6 +563,7 @@ function EncuestaModal({
     });
   };
 
+
   return (
     <Modal
       open={open}
@@ -657,7 +650,7 @@ function EncuestaModal({
           <ol className="space-y-2">
             {draft.preguntas.map((p, idx) => (
               <li
-                key={p.id || p.tempId}
+                key={p.id}
                 className="rounded border border-[var(--subtle)] bg-white p-3"
               >
                 {p.tipo === "opciones" && (
@@ -735,8 +728,6 @@ function EncuestaModal({
   );
 }
 
-
-
 function RespuestaModal({
   open,
   setOpen,
@@ -809,7 +800,7 @@ function RespuestaModal({
         <div className="md:col-span-2">
           {encuesta.preguntas.map((p, idx) => (
             <div
-              key={p.id || p.tempId}
+              key={p.id}
               className="rounded border border-[var(--subtle)] bg-white p-3 mb-2"
             >
               <div className="mb-1 text-sm font-medium">
@@ -821,10 +812,10 @@ function RespuestaModal({
                     <label key={n} className="text-sm">
                       <input
                         type="radio"
-                        name={p.id}
+                        name={`preg_${p.id || p.tempId}`}
                         value={n}
-                        checked={draft.valores[p.id] === n}
-                        onChange={() => setVal(p.id, n)}
+                        checked={draft.valores[p.id || p.tempId] === n}
+                        onChange={() => setVal(p.id || p.tempId, n)}
                       />{" "}
                       {n}
                     </label>
@@ -837,7 +828,7 @@ function RespuestaModal({
                     <label key={v} className="text-sm">
                       <input
                         type="radio"
-                        name={p.id}
+                        name={`preg_${p.id || p.tempId}`}
                         value={v}
                         checked={draft.valores[p.id || p.tempId] === v}
                         onChange={() => setVal(p.id || p.tempId, v)}
@@ -853,10 +844,10 @@ function RespuestaModal({
                     <label key={op} className="text-sm">
                       <input
                         type="radio"
-                        name={p.id}
+                        name={`preg_${p.id || p.tempId}`}
                         value={op}
-                        checked={draft.valores[p.id] === op}
-                        onChange={() => setVal(p.id, op)}
+                        checked={draft.valores[p.id || p.tempId] === op}
+                        onChange={() => setVal(p.id || p.tempId, op)}
                       />{" "}
                       {op}
                     </label>
@@ -866,8 +857,8 @@ function RespuestaModal({
               {p.tipo === "texto" && (
                 <Textarea
                   rows={2}
-                  value={(draft.valores[p.id] as string) || ""}
-                  onChange={(e) => setVal(p.id, e.target.value)}
+                  value={(draft.valores[p.id || p.tempId] as string) || ""}
+                  onChange={(e) => setVal(p.id || p.tempId, e.target.value)}  
                   placeholder="Tu comentario..."
                 />
               )}

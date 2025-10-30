@@ -371,13 +371,16 @@ model Respuesta {
   id          String   @id @default(cuid())
   encuestaId  String
   fecha       DateTime @default(now())
-  respondente Json?
+  tipo_doc    String?      // nuevo campo
+  documento   String?      // nuevo campo
+  nombre      String?      // nuevo campo
   valores     Json
 
   encuesta Encuesta @relation(fields: [encuestaId], references: [id], onDelete: Cascade)
-
+  
   @@index([encuestaId, fecha])
 }
+
 
 /**
  * ================ Entregas (kits) ================

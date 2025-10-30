@@ -19,7 +19,7 @@ export async function POST(req: Request) {
       data: {
         titulo: data.titulo,
         servicio: data.servicio,
-        estado: data.estado ?? "BORRADOR",
+        estado: data.estado,
         descripcion: data.descripcion ?? "",
         preguntas: data.preguntas ?? [],
       },
