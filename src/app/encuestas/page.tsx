@@ -801,7 +801,7 @@ function RespuestaModal({
 }) {
   if (!encuesta || !draft) return null;
 
-  // Asegura tipo_doc por defecto
+  // Asegura tipo_doc por defecto al abrir
   useEffect(() => {
     if (draft && (!draft.respondente || !draft.respondente.tipo_doc)) {
       setDraft({
@@ -832,10 +832,10 @@ function RespuestaModal({
       }
       wide
     >
-      {/* ⚠️ Dos columnas desde md: izquierda fija (320px), derecha flexible */}
-      <div className="grid gap-6 grid-cols-1 md:grid-cols-[320px_1fr]">
-        {/* Datos del respondente */}
-        <div className="grid gap-3 md:w-[320px] shrink-0">
+      {/* Grid: izquierda fija (340px) / derecha flexible */}
+      <div className="grid gap-6 grid-cols-1 md:grid-cols-[340px_1fr] items-start">
+        {/* --- Columna izquierda: datos del respondente (sticky) --- */}
+        <div className="grid gap-3 md:sticky md:top-0 w-[340px] shrink-0">
           <label className="text-sm">
             Tipo de documento
             <Select
@@ -845,7 +845,8 @@ function RespuestaModal({
                   ...draft,
                   respondente: {
                     ...(draft.respondente || {}),
-                    tipo_doc: e.target.value as Respuesta["respondente"]["tipo_doc"],
+                    tipo_doc:
+                      e.target.value as Respuesta["respondente"]["tipo_doc"],
                   },
                 })
               }
@@ -891,12 +892,15 @@ function RespuestaModal({
           </label>
         </div>
 
-        {/* Preguntas */}
-        <div className="min-w-0 md:col-span-1">
+        {/* --- Columna derecha: preguntas --- */}
+        <div className="min-w-0">
           {encuesta.preguntas.map((p, idx) => {
             const qid = p.id ?? p.tempId ?? `idx_${idx}`;
             return (
-              <div key={qid} className="rounded border border-[var(--subtle)] bg-white p-3 mb-2">
+              <div
+                key={qid}
+                className="rounded border border-[var(--subtle)] bg-white p-3 mb-2"
+              >
                 <div className="mb-1 text-sm font-medium">
                   P{idx + 1}. {p.texto}
                 </div>
@@ -965,3 +969,4 @@ function RespuestaModal({
     </Modal>
   );
 }
+
