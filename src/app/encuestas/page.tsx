@@ -17,7 +17,6 @@ import toast from "react-hot-toast";
 
 const genQId = () => `q_${Math.random().toString(36).slice(2, 10)}`;
 
-
 /* ==================== Tipos ==================== */
 type Estado = "BORRADOR" | "ACTIVA" | "INACTIVA";
 type TipoPregunta = "likert" | "si_no" | "opciones" | "texto";
@@ -49,7 +48,6 @@ interface Respuesta {
   };
   valores: Record<string, number | "SI" | "NO" | string>;
 }
-
 
 /* ==================== Helpers UI ==================== */
 function Button({
@@ -121,6 +119,7 @@ function Section({
     </div>
   );
 }
+
 function Modal({
   open,
   onClose,
@@ -137,23 +136,36 @@ function Modal({
   wide?: boolean;
 }) {
   if (!open) return null;
+
   return (
     <div className="fixed inset-0 z-50">
+      {/* Fondo */}
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div
-        className={`absolute left-1/2 top-1/2 ${
-          wide ? "w-[min(980px,96vw)]" : "w-[min(640px,92vw)]"
-        } -translate-x-1/2 -translate-y-1/2 rounded-lg border border-[var(--subtle)] bg-[var(--panel)] shadow-xl`}
-      >
-        <div className="flex items-center justify-between border-b border-[var(--subtle)] px-4 py-3">
-          <h4 className="text-sm font-semibold">{title}</h4>
-          <button onClick={onClose} className="p-1 rounded hover:bg-slate-100">
-            <X size={16} />
-          </button>
-        </div>
-        <div className="p-4">{children}</div>
-        <div className="flex items-center justify-end gap-2 border-t border-[var(--subtle)] px-4 py-3">
-          {actions}
+
+      {/* Contenedor centrado */}
+      <div className="absolute inset-0 flex items-center justify-center p-4">
+        <div
+          className={`${
+            wide ? "w-[min(980px,96vw)]" : "w-[min(640px,92vw)]"
+          } max-h-[90vh] overflow-hidden rounded-lg border border-[var(--subtle)] bg-[var(--panel)] shadow-xl flex flex-col`}
+        >
+          {/* Header (no scrollea) */}
+          <div className="flex items-center justify-between border-b border-[var(--subtle)] px-4 py-3 shrink-0">
+            <h4 className="text-sm font-semibold">{title}</h4>
+            <button onClick={onClose} className="p-1 rounded hover:bg-slate-100">
+              <X size={16} />
+            </button>
+          </div>
+
+          {/* Contenido (scrollea) */}
+          <div className="min-h-0 p-4 overflow-y-auto grow">
+            {children}
+          </div>
+
+          {/* Footer (no scrollea) */}
+          <div className="flex items-center justify-end gap-2 border-t border-[var(--subtle)] px-4 py-3 shrink-0">
+            {actions}
+          </div>
         </div>
       </div>
     </div>
@@ -177,37 +189,31 @@ export default function EncuestasPage() {
   const [openDelete, setOpenDelete] = useState(false);
   const [targetDelete, setTargetDelete] = useState<Encuesta | null>(null);
 
+  useEffect(() => {
+    (async () => {
+      const data = (await getEncuestas()) as Encuesta[];
 
-useEffect(() => {
-  (async () => {
-    const data = (await getEncuestas()) as Encuesta[];  // 👈 tipamos la respuesta
+      // Arregla encuestas viejas sin id en preguntas
+      const fixed: Encuesta[] = await Promise.all(
+        data.map(async (e: Encuesta) => {
+          const needsFix = e.preguntas.some((p: Pregunta) => !p.id);
+          if (needsFix && e.id) {
+            const preguntas: Pregunta[] = e.preguntas.map((p: Pregunta) => ({
+              ...p,
+              id: p.id ?? genQId(),
+            }));
+            await updateEncuesta(e.id, { preguntas });
+            return { ...e, preguntas };
+          }
+          return e;
+        })
+      );
 
-    // Arregla encuestas viejas sin id en preguntas
-    const fixed: Encuesta[] = await Promise.all(
-      data.map(async (e: Encuesta) => {
-        const needsFix = e.preguntas.some((p: Pregunta) => !p.id);   // 👈 p: Pregunta
-
-        if (needsFix && e.id) {
-          const preguntas: Pregunta[] = e.preguntas.map((p: Pregunta) => ({
-            ...p,
-            id: p.id ?? genQId(),                                      // 👈 garantizamos id
-          }));
-
-          // Persistimos la reparación para que quede estable
-          await updateEncuesta(e.id, { preguntas });                   // 👈 mandamos solo lo necesario
-          return { ...e, preguntas };
-        }
-
-        return e;
-      })
-    );
-
-    setEncuestas(fixed);
-    if (fixed.length > 0 && !sel) setSel(fixed[0].id!);
-  })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
-
+      setEncuestas(fixed);
+      if (fixed.length > 0 && !sel) setSel(fixed[0].id!);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!sel) return;
@@ -248,62 +254,58 @@ useEffect(() => {
     setOpenEdit(true);
   };
 
-const guardarEncuesta = async () => {
-  if (!draft) return;
+  const guardarEncuesta = async () => {
+    if (!draft) return;
 
-  // Normaliza ids de preguntas
-  const preguntasNormalizadas = draft.preguntas.map((p) => ({
-    ...p,
-    id: p.id ?? p.tempId ?? genQId(),  // 👈 garantiza id
-    tempId: undefined,                 // 👈 no persistimos tempId
-  }));
+    const preguntasNormalizadas = draft.preguntas.map((p) => ({
+      ...p,
+      id: p.id ?? p.tempId ?? genQId(),
+      tempId: undefined,
+    }));
 
-  const data = {
-    titulo: draft.titulo,
-    servicio: draft.servicio,
-    estado: draft.estado,
-    descripcion: draft.descripcion,
-    preguntas: preguntasNormalizadas, 
+    const data = {
+      titulo: draft.titulo,
+      servicio: draft.servicio,
+      estado: draft.estado,
+      descripcion: draft.descripcion,
+      preguntas: preguntasNormalizadas,
+    };
+
+    try {
+      const saved = draft.id
+        ? await updateEncuesta(draft.id, data)
+        : await createEncuesta(data);
+
+      setEncuestas((prev) =>
+        draft.id ? prev.map((e) => (e.id === saved.id ? saved : e)) : [saved, ...prev]
+      );
+      setSel(saved.id);
+      setOpenEdit(false);
+      toast.success("Encuesta guardada");
+    } catch (err: any) {
+      console.error("[guardarEncuesta]", err);
+      toast.error(err?.message || "Error al guardar");
+    }
   };
-try {
-    const saved = draft.id
-      ? await updateEncuesta(draft.id, data)
-      : await createEncuesta(data); // ← debe devolver la encuesta creada (con preguntas)
 
-    // ✅ Actualiza la UI en caliente sin volver a pedir al servidor
-    setEncuestas((prev) =>
-      draft.id
-        ? prev.map((e) => (e.id === saved.id ? saved : e))
-        : [saved, ...prev]
-    );
-    setSel(saved.id);        // selecciona la nueva encuesta
-    setOpenEdit(false);
-    toast.success("Encuesta guardada");
-  } catch (err: any) {
-    console.error("[guardarEncuesta]", err);
-    toast.error(err?.message || "Error al guardar");
-  }
-};
-
-
-const eliminarEncuesta = async () => {
-  if (!targetDelete) return;
-  const ok = await deleteEncuesta(targetDelete.id!);
-  if (ok) {
-    const data = await getEncuestas();
-    setEncuestas(data);
-    if (sel === targetDelete.id) setSel(null);
-    toast.success("Encuesta eliminada correctamente");
-  }
-  setOpenDelete(false);
-  setTargetDelete(null);
-};
+  const eliminarEncuesta = async () => {
+    if (!targetDelete) return;
+    const ok = await deleteEncuesta(targetDelete.id!);
+    if (ok) {
+      const data = await getEncuestas();
+      setEncuestas(data);
+      if (sel === targetDelete.id) setSel(null);
+      toast.success("Encuesta eliminada correctamente");
+    }
+    setOpenDelete(false);
+    setTargetDelete(null);
+  };
 
   /* ==================== Respuestas ==================== */
   const registrarResp = (e: Encuesta) => {
     const r: Respuesta = {
       encuestaId: e.id!,
-      respondente: {tipo_doc: "CC"},
+      respondente: { tipo_doc: "CC" },
       valores: {},
     };
     setRespDraft(r);
@@ -313,13 +315,12 @@ const eliminarEncuesta = async () => {
   const guardarResp = async () => {
     if (!respDraft) return;
     try {
-      const saved = await saveRespuesta(respDraft);
+      await saveRespuesta(respDraft);
       toast.success("Respuesta registrada");
       const updated = await getEncuestas();
       setEncuestas(updated);
       setOpenResp(false);
     } catch (err: any) {
-      // Muestra exactamente lo que devolvió el backend
       const msg =
         err?.message ||
         err?.toString?.() ||
@@ -364,9 +365,7 @@ const eliminarEncuesta = async () => {
               {lista.map((e) => (
                 <li
                   key={e.id}
-                  className={`px-3 py-3 rounded hover:bg-white ${
-                    sel === e.id ? "bg-white" : ""
-                  }`}
+                  className={`px-3 py-3 rounded hover:bg-white ${sel === e.id ? "bg-white" : ""}`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <button onClick={() => setSel(e.id!)} className="text-left">
@@ -396,16 +395,16 @@ const eliminarEncuesta = async () => {
                       >
                         <Play size={14} />
                       </Button>
-                     <Button
-                      variant="ghost"
-                      onClick={() => {
-                        setTargetDelete(e);
-                        setOpenDelete(true);
-                      }}
-                      title="Eliminar"
-                    >
-                      <Trash2 size={14} />
-                    </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setTargetDelete(e);
+                          setOpenDelete(true);
+                        }}
+                        title="Eliminar"
+                      >
+                        <Trash2 size={14} />
+                      </Button>
                     </div>
                   </div>
                 </li>
@@ -573,8 +572,7 @@ const eliminarEncuesta = async () => {
         }
       >
         <div className="text-sm text-slate-700">
-          ¿Seguro que deseas eliminar la encuesta{" "}
-          <b>{targetDelete?.titulo}</b>?<br />
+          ¿Seguro que deseas eliminar la encuesta <b>{targetDelete?.titulo}</b>?<br />
           Esta acción no se puede deshacer.
         </div>
       </Modal>
@@ -600,7 +598,7 @@ function EncuestaModal({
 
   const addPregunta = (tipo: TipoPregunta) => {
     const p: Pregunta = {
-      id: genQId(),              // 👈 id estable (se guarda en BD)
+      id: genQId(),
       tempId: undefined,
       texto: "Nueva pregunta",
       tipo,
@@ -609,18 +607,13 @@ function EncuestaModal({
     setDraft({ ...draft, preguntas: [...draft.preguntas, p] });
   };
 
-
-
   const rmPregunta = (id?: string) => {
-    if (!id) return; // si aún no tiene id, no hace nada
+    if (!id) return;
     setDraft({
       ...draft,
-      preguntas: draft.preguntas.filter(
-        (p) => p.id !== id && p.tempId !== id // cubrimos ambos casos
-      ),
+      preguntas: draft.preguntas.filter((p) => p.id !== id && p.tempId !== id),
     });
   };
-
 
   return (
     <Modal
@@ -639,26 +632,26 @@ function EncuestaModal({
       }
       wide
     >
-      <div className="grid gap-6 md:grid-cols-3">
-        <div className="grid gap-4 md:col-span-1">
+      {/* Grid de 2 columnas: izquierda fija (340px) / derecha flexible */}
+      <div className="grid gap-6 grid-cols-1 md:grid-cols-[340px_1fr] items-start">
+        {/* --- Columna izquierda (fija + sticky) --- */}
+        <div className="grid gap-4 md:col-span-1 md:sticky md:top-0 w-[340px] shrink-0">
           <label className="text-sm">
             Título
             <Input
               value={draft.titulo}
-              onChange={(e) =>
-                setDraft({ ...draft, titulo: e.target.value })
-              }
+              onChange={(e) => setDraft({ ...draft, titulo: e.target.value })}
             />
           </label>
+
           <label className="text-sm">
             Servicio
             <Input
               value={draft.servicio}
-              onChange={(e) =>
-                setDraft({ ...draft, servicio: e.target.value })
-              }
+              onChange={(e) => setDraft({ ...draft, servicio: e.target.value })}
             />
           </label>
+
           <label className="text-sm">
             Estado
             <Select
@@ -672,6 +665,7 @@ function EncuestaModal({
               <option value="INACTIVA">Inactiva</option>
             </Select>
           </label>
+
           <label className="text-sm">
             Descripción
             <Textarea
@@ -691,10 +685,7 @@ function EncuestaModal({
             <Button variant="outline" onClick={() => addPregunta("si_no")}>
               Sí/No
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => addPregunta("opciones")}
-            >
+            <Button variant="outline" onClick={() => addPregunta("opciones")}>
               Opción única
             </Button>
             <Button variant="outline" onClick={() => addPregunta("texto")}>
@@ -703,7 +694,8 @@ function EncuestaModal({
           </div>
         </div>
 
-        <div className="md:col-span-2">
+        {/* --- Columna derecha (preguntas) --- */}
+        <div className="min-w-0 md:col-span-1">
           <div className="mb-2 text-sm font-semibold">Preguntas</div>
           <ol className="space-y-2">
             {draft.preguntas.map((p, idx) => (
@@ -730,7 +722,9 @@ function EncuestaModal({
                           variant="ghost"
                           onClick={() => {
                             const arr = [...draft.preguntas];
-                            const opciones = (p.opciones || []).filter((_, j) => j !== i);
+                            const opciones = (p.opciones || []).filter(
+                              (_, j) => j !== i
+                            );
                             arr[idx] = { ...p, opciones };
                             setDraft({ ...draft, preguntas: arr });
                           }}
@@ -745,7 +739,12 @@ function EncuestaModal({
                       variant="outline"
                       onClick={() => {
                         const arr = [...draft.preguntas];
-                        const opciones = [...(p.opciones || []), `Opción ${p.opciones?.length ? p.opciones.length + 1 : 1}`];
+                        const opciones = [
+                          ...(p.opciones || []),
+                          `Opción ${
+                            p.opciones?.length ? p.opciones.length + 1 : 1
+                          }`,
+                        ];
                         arr[idx] = { ...p, opciones };
                         setDraft({ ...draft, preguntas: arr });
                       }}
@@ -775,9 +774,7 @@ function EncuestaModal({
               </li>
             ))}
             {draft.preguntas.length === 0 && (
-              <li className="text-sm text-slate-500">
-                Aún no hay preguntas.
-              </li>
+              <li className="text-sm text-slate-500">Aún no hay preguntas.</li>
             )}
           </ol>
         </div>
@@ -785,6 +782,7 @@ function EncuestaModal({
     </Modal>
   );
 }
+
 
 function RespuestaModal({
   open,
@@ -802,16 +800,17 @@ function RespuestaModal({
   onSave: () => void;
 }) {
   if (!encuesta || !draft) return null;
-  // Si por alguna razón abrimos sin tipo_doc, lo inicializamos a "CC"
-useEffect(() => {
-  if (draft && (!draft.respondente || !draft.respondente.tipo_doc)) {
-    setDraft({
-      ...draft,
-      respondente: { ...(draft.respondente || {}), tipo_doc: "CC" },
-    });
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [open]); // se ejecuta al abrir el modal
+
+  // Asegura tipo_doc por defecto
+  useEffect(() => {
+    if (draft && (!draft.respondente || !draft.respondente.tipo_doc)) {
+      setDraft({
+        ...draft,
+        respondente: { ...(draft.respondente || {}), tipo_doc: "CC" },
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const setVal = (pid: string, val: number | "SI" | "NO" | string) =>
     setDraft({ ...draft, valores: { ...draft.valores, [pid]: val } });
@@ -833,9 +832,10 @@ useEffect(() => {
       }
       wide
     >
-      <div className="grid gap-6 md:grid-cols-3">
-        {/* -------- Columna izquierda: datos del respondente -------- */}
-        <div className="grid gap-3">
+      {/* ⚠️ Dos columnas desde md: izquierda fija (320px), derecha flexible */}
+      <div className="grid gap-6 grid-cols-1 md:grid-cols-[320px_1fr]">
+        {/* Datos del respondente */}
+        <div className="grid gap-3 md:w-[320px] shrink-0">
           <label className="text-sm">
             Tipo de documento
             <Select
@@ -891,8 +891,8 @@ useEffect(() => {
           </label>
         </div>
 
-        {/* -------- Columna derecha: preguntas -------- */}
-        <div className="md:col-span-2">
+        {/* Preguntas */}
+        <div className="min-w-0 md:col-span-1">
           {encuesta.preguntas.map((p, idx) => {
             const qid = p.id ?? p.tempId ?? `idx_${idx}`;
             return (
@@ -965,4 +965,3 @@ useEffect(() => {
     </Modal>
   );
 }
-
