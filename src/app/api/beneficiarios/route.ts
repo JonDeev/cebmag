@@ -44,6 +44,7 @@ const mapDiscapacidad = (d?: string | null): DiscapacidadTipo | null => {
 
 const coerceDate = (s?: string | null) => (s ? new Date(s) : null);
 
+/** Mapea payload tipo UI → modelo Prisma (para crear). */
 function mapPayload(body: any) {
   // admite payload “tipo UI” (nombres de inputs) o “tipo modelo”
   const tipoDoc = (body.tipoDoc || body.tipo_doc || 'CC') as TipoDocumento;
@@ -129,11 +130,76 @@ export async function POST(req: Request) {
     }
 
     const data = mapPayload(body);
-
     const created = await prisma.beneficiario.create({ data });
+
     return NextResponse.json(created, { status: 201 });
   } catch (e: any) {
     console.error(e);
+    return NextResponse.json({ error: e?.message ?? 'Error' }, { status: 500 });
+  }
+}
+
+/* ==== PUT: actualizar beneficiario (por id o por doc) ==== */
+export async function PUT(req: Request) {
+  try {
+    const body = await req.json();
+
+    // 1) Preferimos actualizar por id (más seguro); si no, por doc/num_doc
+    const id = (body.id as string | undefined)?.trim();
+    const docWhere = (body.doc ?? body.num_doc) as string | undefined;
+
+    if (!id && !docWhere) {
+      return NextResponse.json(
+        { error: 'Para actualizar envía "id" o "doc/num_doc".' },
+        { status: 400 }
+      );
+    }
+
+    // 2) Mapeamos el payload como si fuera "create"
+    const mapped = mapPayload(body) as Prisma.BeneficiarioCreateInput;
+
+    // 3) Para UPDATE, evitamos sobreescribir con cadenas vacías:
+    const sanitizedEntries = Object.entries(mapped).map(([k, v]) => [k, v === '' ? undefined : v]);
+    const mappedSanitized = Object.fromEntries(sanitizedEntries) as Record<string, any>;
+
+    // 4) No cambiamos el documento cuando hacemos where por doc (a menos que llegue id + docNuevo)
+    //    Evitamos confusiones y colisiones con el índice único "doc".
+    const { doc: _ignoreDocForUpdate, ...rest } = mappedSanitized;
+
+    const data: Prisma.BeneficiarioUpdateInput = { ...rest };
+
+    // Si viene id y quieren cambiar el número de documento:
+    if (id && (body.docNuevo || body.num_doc_nuevo)) {
+      data.doc = String(body.docNuevo ?? body.num_doc_nuevo);
+    }
+
+    const updated = await prisma.beneficiario.update({
+      where: id ? { id } : { doc: String(docWhere) },
+      data,
+      select: {
+        id: true,
+        tipoDoc: true,
+        doc: true,
+        nombres: true,
+        apellidos: true,
+        updatedAt: true,
+      },
+    });
+
+    return NextResponse.json(updated, { status: 200 });
+  } catch (e: any) {
+    // P2025 = no existe el registro a actualizar
+    if (e?.code === 'P2025') {
+      return NextResponse.json({ error: 'Beneficiario no encontrado.' }, { status: 404 });
+    }
+    // P2002 = violación de índice único (por ejemplo, al intentar cambiar doc a uno ya existente)
+    if (e?.code === 'P2002') {
+      return NextResponse.json(
+        { error: 'Ya existe otro beneficiario con ese número de documento.' },
+        { status: 409 }
+      );
+    }
+    console.error('PUT /api/beneficiarios error:', e);
     return NextResponse.json({ error: e?.message ?? 'Error' }, { status: 500 });
   }
 }

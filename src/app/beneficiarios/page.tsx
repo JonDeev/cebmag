@@ -3,7 +3,7 @@
 import { useState } from "react";
 import DashboardShell from "../_components/DashboardShell";
 import {
-  IdCard, Stethoscope, Palette, PhoneCall, UserPlus, Upload, Trash2, Plus, Search,
+  IdCard, Stethoscope, Palette, PhoneCall, UserPlus, Upload, Trash2, Plus, Search, Pencil,
 } from "lucide-react";
 
 /* ---------- UI helpers (inputs básicos) ---------- */
@@ -99,6 +99,7 @@ export default function BeneficiariosPage() {
 
   const [saving, setSaving] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [updating, setUpdating] = useState(false);
 
   const limpiar = () => {
     setDocs([]);
@@ -177,13 +178,11 @@ export default function BeneficiariosPage() {
     }
   };
 
-  const guardar = async () => {
+  const getPayloadFromForm = () => {
     const form = document.getElementById("benef-form") as HTMLFormElement | null;
-    if (!form) return;
-
+    if (!form) return null;
     const fd = new FormData(form);
-    const payload = {
-      // nombres UI → backend
+    return {
       tipo_doc: fd.get("tipo_doc"),
       num_doc: fd.get("num_doc"),
       fecha_nac: fd.get("fecha_nac"),
@@ -210,9 +209,13 @@ export default function BeneficiariosPage() {
       urg_tel: fd.get("urg_tel"),
       urg_dir: fd.get("urg_dir"),
       acudientes,
-      // solo metadatos de PDFs por ahora
       docs: docs.map((f) => ({ nombre: f.name, tipo: "PDF", size: f.size })),
     };
+  };
+
+  const guardar = async () => {
+    const payload = getPayloadFromForm();
+    if (!payload) return;
 
     // validación mínima
     if (!payload.num_doc || !payload.nombres || !payload.apellidos) {
@@ -243,12 +246,47 @@ export default function BeneficiariosPage() {
     }
   };
 
+  const actualizar = async () => {
+    const payload = getPayloadFromForm();
+    if (!payload) return;
+
+    if (!payload.tipo_doc || !payload.num_doc) {
+      alert("Para actualizar debes indicar Tipo y Número de documento.");
+      return;
+    }
+
+    try {
+      setUpdating(true);
+      const res = await fetch("/api/beneficiarios", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert("Error: " + (j.error ?? res.statusText));
+        return;
+      }
+
+      alert(`Actualizado ✅\nÚltima actualización: ${j.updatedAt ?? "ok"}`);
+    } catch (e: any) {
+      alert("Error de red: " + (e?.message ?? "Desconocido"));
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   return (
     <DashboardShell title={title}>
       <div className="grid gap-6">
         {/* Barra de acciones */}
         <div className="flex items-center justify-end gap-2">
           <Button variant="ghost" onClick={limpiar}>Limpiar</Button>
+          <Button variant="outline" onClick={actualizar} disabled={updating}>
+            <Pencil size={16} />
+            {updating ? "Actualizando…" : "Actualizar"}
+          </Button>
           <Button onClick={guardar} disabled={saving}>{saving ? "Guardando…" : "Guardar"}</Button>
         </div>
 
@@ -497,6 +535,10 @@ export default function BeneficiariosPage() {
         {/* Pie de acciones */}
         <div className="flex items-center justify-end gap-2">
           <Button variant="ghost" onClick={limpiar}>Limpiar</Button>
+          <Button variant="outline" onClick={actualizar} disabled={updating}>
+            <Pencil size={16} />
+            {updating ? "Actualizando…" : "Actualizar"}
+          </Button>
           <Button onClick={guardar} disabled={saving}>{saving ? "Guardando…" : "Guardar"}</Button>
         </div>
       </div>
