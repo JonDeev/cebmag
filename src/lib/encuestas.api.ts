@@ -1,73 +1,88 @@
 import toast from "react-hot-toast";
 
-// ===== Listar =====
+/* ===================== Listar ===================== */
 export async function getEncuestas() {
   try {
-    const res = await fetch("/api/encuestas", { cache: "no-store" });
+    const res = await fetch(`/api/encuestas?ts=${Date.now()}`, {
+      cache: "no-store",
+      headers: {
+        "cache-control": "no-cache",
+        pragma: "no-cache",
+      },
+    });
     if (!res.ok) throw new Error("Error al cargar encuestas");
     return await res.json();
   } catch (e: any) {
-    toast.error(e.message || "Error al listar encuestas");
+    toast.error(e?.message || "Error al listar encuestas");
     return [];
   }
 }
 
-// ===== Crear =====
+/* ===================== Crear ===================== */
 export async function createEncuesta(data: any) {
   const t = toast.loading("Guardando encuesta...");
   try {
     const res = await fetch("/api/encuestas", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "cache-control": "no-cache",
+      },
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error("Error al guardar");
-    const json = await res.json();
+    if (!res.ok) throw new Error(await res.text());
+    const json = await res.json(); // ← debería incluir preguntas
     toast.success("Encuesta creada correctamente", { id: t });
     return json;
   } catch (e: any) {
-    toast.error(e.message || "Error al crear encuesta", { id: t });
+    toast.error(e?.message || "Error al crear encuesta", { id: t });
     return null;
   }
 }
 
-// ===== Actualizar =====
+/* ===================== Actualizar ===================== */
 export async function updateEncuesta(id: string, data: any) {
   const t = toast.loading("Actualizando encuesta...");
   try {
     const res = await fetch(`/api/encuestas/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      method: "PATCH", // usa PATCH como en tu backend
+      headers: {
+        "Content-Type": "application/json",
+        "cache-control": "no-cache",
+      },
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error("Error al actualizar");
-    const json = await res.json();
+    if (!res.ok) throw new Error(await res.text());
+    const json = await res.json(); // ← debería incluir preguntas actualizadas
     toast.success("Encuesta actualizada correctamente", { id: t });
     return json;
   } catch (e: any) {
-    toast.error(e.message || "Error al actualizar encuesta", { id: t });
+    toast.error(e?.message || "Error al actualizar encuesta", { id: t });
     return null;
   }
 }
 
-// ===== Eliminar =====
+/* ===================== Eliminar ===================== */
 export async function deleteEncuesta(id: string) {
   const t = toast.loading("Eliminando encuesta...");
   try {
-    const res = await fetch(`/api/encuestas/${id}`, { method: "DELETE" });
-    if (!res.ok) throw new Error("Error al eliminar");
+    const res = await fetch(`/api/encuestas/${id}`, {
+      method: "DELETE",
+      headers: { "cache-control": "no-cache" },
+    });
+    if (!res.ok) throw new Error(await res.text());
     toast.success("Encuesta eliminada", { id: t });
     return true;
   } catch (e: any) {
-    toast.error(e.message || "Error al eliminar encuesta", { id: t });
+    toast.error(e?.message || "Error al eliminar encuesta", { id: t });
     return false;
   }
 }
 
-// ===== Guardar respuesta =====
+/* ===================== Guardar respuesta ===================== */
 export async function saveRespuesta(r: {
   encuestaId: string;
-  respondente?: { doc?: string; nombre?: string };
+  respondente?: { tipo_doc?: "CC" | "TI" | "CE" | "RC" | "PA"; doc?: string; nombre?: string };
   valores: Record<string, any>;
 }) {
   const res = await fetch(`/api/encuestas/${r.encuestaId}/respuestas`, {
@@ -85,8 +100,7 @@ export async function saveRespuesta(r: {
   try {
     data = raw ? JSON.parse(raw) : null;
   } catch {
-    // si no es JSON, dejamos el texto crudo
-    data = raw;
+    data = raw; // si no es JSON, dejamos el texto crudo
   }
 
   if (!res.ok) {
@@ -99,12 +113,16 @@ export async function saveRespuesta(r: {
   return data;
 }
 
-
-// ===== Resultados Encuestas =====
-
+/* ===================== Resultados ===================== */
 export async function getResultados(id: string) {
   try {
-    const res = await fetch(`/api/encuestas/${id}/resultados`, { cache: "no-store" });
+    const res = await fetch(`/api/encuestas/${id}/resultados?ts=${Date.now()}`, {
+      cache: "no-store",
+      headers: {
+        "cache-control": "no-cache",
+        pragma: "no-cache",
+      },
+    });
     if (!res.ok) throw new Error("Error al obtener resultados");
     return await res.json();
   } catch (e: any) {
@@ -112,4 +130,3 @@ export async function getResultados(id: string) {
     return null;
   }
 }
-

@@ -178,28 +178,35 @@ export default function EncuestasPage() {
   const [targetDelete, setTargetDelete] = useState<Encuesta | null>(null);
 
 
-  useEffect(() => {
-    (async () => {
-      const data = await getEncuestas();
+useEffect(() => {
+  (async () => {
+    const data = (await getEncuestas()) as Encuesta[];  // 👈 tipamos la respuesta
 
-      // Arregla encuestas viejas sin id en preguntas
-      const fixed = await Promise.all(
-        data.map(async (e) => {
-          const needsFix = e.preguntas.some((p) => !p.id);
-          if (needsFix && e.id) {
-            const preguntas = e.preguntas.map((p) => ({ ...p, id: p.id ?? genQId() }));
-            // Persistimos la reparación para que quede estable
-            await updateEncuesta(e.id, { ...e, preguntas });
-            return { ...e, preguntas };
-          }
-          return e;
-        })
-      );
+    // Arregla encuestas viejas sin id en preguntas
+    const fixed: Encuesta[] = await Promise.all(
+      data.map(async (e: Encuesta) => {
+        const needsFix = e.preguntas.some((p: Pregunta) => !p.id);   // 👈 p: Pregunta
 
-      setEncuestas(fixed);
-      if (fixed.length > 0 && !sel) setSel(fixed[0].id!);
-    })();
-  }, []);
+        if (needsFix && e.id) {
+          const preguntas: Pregunta[] = e.preguntas.map((p: Pregunta) => ({
+            ...p,
+            id: p.id ?? genQId(),                                      // 👈 garantizamos id
+          }));
+
+          // Persistimos la reparación para que quede estable
+          await updateEncuesta(e.id, { preguntas });                   // 👈 mandamos solo lo necesario
+          return { ...e, preguntas };
+        }
+
+        return e;
+      })
+    );
+
+    setEncuestas(fixed);
+    if (fixed.length > 0 && !sel) setSel(fixed[0].id!);
+  })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
 
 
   useEffect(() => {
@@ -256,17 +263,25 @@ const guardarEncuesta = async () => {
     servicio: draft.servicio,
     estado: draft.estado,
     descripcion: draft.descripcion,
-    preguntas: preguntasNormalizadas,
+    preguntas: preguntasNormalizadas, 
   };
+try {
+    const saved = draft.id
+      ? await updateEncuesta(draft.id, data)
+      : await createEncuesta(data); // ← debe devolver la encuesta creada (con preguntas)
 
-  let saved;
-  if (draft.id) saved = await updateEncuesta(draft.id, data);
-  else saved = await createEncuesta(data);
-
-  if (saved) {
-    const updated = await getEncuestas();
-    setEncuestas(updated);
+    // ✅ Actualiza la UI en caliente sin volver a pedir al servidor
+    setEncuestas((prev) =>
+      draft.id
+        ? prev.map((e) => (e.id === saved.id ? saved : e))
+        : [saved, ...prev]
+    );
+    setSel(saved.id);        // selecciona la nueva encuesta
     setOpenEdit(false);
+    toast.success("Encuesta guardada");
+  } catch (err: any) {
+    console.error("[guardarEncuesta]", err);
+    toast.error(err?.message || "Error al guardar");
   }
 };
 
