@@ -524,7 +524,10 @@ export default function PQRSPage() {
                           <Pencil size={14} /> Detalle
                         </Button>
 
-                        <Button variant="ghost" onClick={() => abrirSeguimiento(r)}>
+                        <Button variant="outline" onClick={() => abrirSeguimiento(r)}
+                          className="h-8 px-3 rounded-md shadow-sm border-slate-200 hover:bg-white"
+                          title="Abrir seguimiento"
+                          >
                           <MessageSquare size={14} /> Seguimiento
                         </Button>
                       </div>
