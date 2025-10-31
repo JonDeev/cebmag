@@ -5,6 +5,7 @@ import DashboardShell from "../_components/DashboardShell";
 import {
   IdCard, Stethoscope, Palette, PhoneCall, UserPlus, Upload, Trash2, Plus, Search, Pencil,
 } from "lucide-react";
+import toast from "react-hot-toast";
 
 /* ---------- UI helpers (inputs básicos) ---------- */
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
@@ -111,7 +112,7 @@ export default function BeneficiariosPage() {
     const tipo = (document.querySelector("[name='tipo_doc']") as HTMLSelectElement)?.value;
     const doc = (document.querySelector("[name='num_doc']") as HTMLInputElement)?.value;
     if (!tipo || !doc) {
-      alert("Ingrese tipo y número de documento para buscar.");
+      toast.error("Ingrese tipo y número de documento para buscar.");
       return;
     }
 
@@ -125,7 +126,7 @@ export default function BeneficiariosPage() {
       const data = await res.json();
 
       if (!data) {
-        alert("No se encontró ningún beneficiario con esos datos.");
+        toast("No se encontró ningún beneficiario con esos datos.");
         return;
       }
 
@@ -170,9 +171,9 @@ export default function BeneficiariosPage() {
 
       if (Array.isArray(data.acudientes)) setAcudientes(data.acudientes);
 
-      alert("Beneficiario encontrado ✅");
+      toast.success("Beneficiario encontrado ✅");
     } catch (e: any) {
-      alert("Error: " + (e?.message ?? "Desconocido"));
+      toast.error("Error: " + (e?.message ?? "Desconocido"));
     } finally {
       setSearching(false);
     }
@@ -219,7 +220,7 @@ export default function BeneficiariosPage() {
 
     // validación mínima
     if (!payload.num_doc || !payload.nombres || !payload.apellidos) {
-      alert("Faltan campos obligatorios: documento, nombres y apellidos.");
+      toast.error("Faltan campos obligatorios: documento, nombres y apellidos.");
       return;
     }
 
@@ -233,14 +234,14 @@ export default function BeneficiariosPage() {
 
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert("Error: " + (j.error ?? res.statusText));
+        toast.error("Error: " + (j.error ?? res.statusText));
         return;
       }
 
-      alert(`Guardado ✅\nID: ${j.id}`);
+      toast.success(`Guardado ✅ (ID: ${j.id ?? "ok"})`);
       limpiar();
     } catch (e: any) {
-      alert("Error de red: " + (e?.message ?? "Desconocido"));
+      toast.error("Error de red: " + (e?.message ?? "Desconocido"));
     } finally {
       setSaving(false);
     }
@@ -251,7 +252,7 @@ export default function BeneficiariosPage() {
     if (!payload) return;
 
     if (!payload.tipo_doc || !payload.num_doc) {
-      alert("Para actualizar debes indicar Tipo y Número de documento.");
+      toast.error("Para actualizar debes indicar Tipo y Número de documento.");
       return;
     }
 
@@ -265,13 +266,13 @@ export default function BeneficiariosPage() {
 
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert("Error: " + (j.error ?? res.statusText));
+        toast.error("Error: " + (j.error ?? res.statusText));
         return;
       }
 
-      alert(`Actualizado ✅\nÚltima actualización: ${j.updatedAt ?? "ok"}`);
+      toast.success(`Actualizado ✅ Última actualización: ${j.updatedAt ?? "ok"}`);
     } catch (e: any) {
-      alert("Error de red: " + (e?.message ?? "Desconocido"));
+      toast.error("Error de red: " + (e?.message ?? "Desconocido"));
     } finally {
       setUpdating(false);
     }
