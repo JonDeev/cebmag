@@ -11,7 +11,10 @@ export async function GET(req: NextRequest) {
   const tipo = searchParams.get("tipo") as keyof typeof mapTipo | null;
 
   const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
-  const pageSize = Math.max(1, Math.min(100, parseInt(searchParams.get("pageSize") || "20", 10)));
+  const pageSize = Math.max(
+    1,
+    Math.min(100, parseInt(searchParams.get("pageSize") || "20", 10))
+  );
 
   const where: any = {};
   if (estado && mapEstado[estado]) where.estado = mapEstado[estado];
@@ -21,8 +24,6 @@ export async function GET(req: NextRequest) {
       { radicado: { contains: q, mode: "insensitive" } },
       { asunto: { contains: q, mode: "insensitive" } },
       { responsable: { contains: q, mode: "insensitive" } },
-      // NOTA: filtrar por campos dentro de JSON (solicitante) con Prisma es limitado,
-      // por simplicidad nos quedamos con estos campos; si necesitas buscar nombre/doc, podemos usar raw SQL/GIN.
     ];
   }
 
@@ -39,10 +40,22 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ total, page, pageSize, items });
 }
 
+const toIntOrNull = (v: any): number | null => {
+  if (v === null || typeof v === "undefined") return null;
+  const n = typeof v === "number" ? v : Number(String(v).trim());
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.trunc(n);
+};
+
 export async function POST(req: NextRequest) {
   try {
     const json = await req.json();
+
+    // ✅ Zod valida lo que ya tienes (tipo/estado/origen/canal/etc)
     const data = createPQRSBody.parse(json);
+
+    // ✅ importante: toma beneficiarioId desde json (por si Zod lo strippea)
+    const beneficiarioId = toIntOrNull((json as any).beneficiarioId);
 
     const radicado = data.radicado || (await nextRadicadoPQRS());
     const fechaISO = data.fecha ? new Date(data.fecha) : new Date();
@@ -56,6 +69,7 @@ export async function POST(req: NextRequest) {
         estado: mapEstado[data.estado || "Abierta"],
         origen: mapOrigen[data.origen],
         canal: mapCanal[data.canal],
+
         solicitante: data.solicitante,
         asunto: data.asunto,
         descripcion: data.descripcion,
@@ -63,6 +77,9 @@ export async function POST(req: NextRequest) {
         vencimiento: vencISO,
         adjuntos: data.adjuntos ?? [],
         historial: data.historial ?? [],
+
+        // ✅ AQUÍ SE GUARDA
+        beneficiarioId,
       },
     });
 

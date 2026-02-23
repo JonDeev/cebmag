@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import DashboardShell from "../_components/DashboardShell";
 import {
   Plus,
@@ -9,13 +9,12 @@ import {
   User,
   Paperclip,
   Clock,
-  CheckCircle2,
   XCircle,
   Pencil,
   MessageSquare,
   Tag,
 } from "lucide-react";
-import { toast } from "react-hot-toast";
+import toast from "react-hot-toast";
 import ClosePqrsModal from "@/components/ui/ClosePqrsModal";
 
 /* ========= Tipos (UI) ========= */
@@ -23,32 +22,48 @@ type Tipo = "Petición" | "Queja" | "Reclamo" | "Sugerencia";
 type Estado = "Abierta" | "En trámite" | "Re Abierto" | "Cerrada";
 type Origen = "Beneficiario" | "Tercero";
 type Canal = "Web" | "Teléfono" | "Presencial" | "Email";
-type TipoDoc = "CC" | "CE" | "TI" | "PAS";
+
+/** Prisma: PA (no PAS) */
+type TipoDoc = "CC" | "TI" | "CE" | "RC" | "PA" | "PEP" | "PPT" | "NIT" | "OTRO";
 
 type Adj = { name: string; size?: number; url?: string; mime?: string };
 type Evento = { fecha: string; evento: string; nota?: string };
 
+type Solicitante = {
+  tipoDoc?: TipoDoc;
+  doc?: string;
+
+  // UI nueva
+  nombres?: string;
+  apellidos?: string;
+
+  // compatibilidad
+  nombre?: string;
+
+  telefono?: string;
+  email?: string;
+};
+
 type PQRS = {
-  id: string;
+  id?: number; // Int
   radicado: string;
   fecha: string; // ISO day
   tipo: Tipo;
   estado: Estado;
   origen: Origen;
   canal: Canal;
-  solicitante: {
-    tipoDoc?: TipoDoc;
-    doc?: string;
-    nombre?: string;
-    telefono?: string;
-    email?: string;
-  };
+
+  solicitante: Solicitante;
+
   asunto: string;
   descripcion: string;
   responsable?: string;
   vencimiento?: string; // ISO day
+
   adjuntos: Adj[];
   historial: Evento[];
+
+  beneficiarioId?: number | null; // Int
 };
 
 /* ========= UI helpers ========= */
@@ -60,8 +75,7 @@ function Button({
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "solid" | "outline" | "ghost";
 }) {
-  const base =
-    "inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm transition";
+  const base = "inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm transition";
   const styles =
     variant === "solid"
       ? "bg-[var(--brand)] text-white hover:opacity-90"
@@ -78,9 +92,7 @@ function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
-      className={`h-10 w-full rounded-md border border-[var(--subtle)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 ${
-        props.className || ""
-      }`}
+      className={`h-10 w-full rounded-md border border-[var(--subtle)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 ${props.className || ""}`}
     />
   );
 }
@@ -88,9 +100,7 @@ function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select
       {...props}
-      className={`h-10 w-full rounded-md border border-[var(--subtle)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 ${
-        props.className || ""
-      }`}
+      className={`h-10 w-full rounded-md border border-[var(--subtle)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 ${props.className || ""}`}
     />
   );
 }
@@ -98,9 +108,7 @@ function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
       {...props}
-      className={`w-full rounded-md border border-[var(--subtle)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 ${
-        props.className || ""
-      }`}
+      className={`w-full rounded-md border border-[var(--subtle)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 ${props.className || ""}`}
     />
   );
 }
@@ -120,9 +128,7 @@ function Badge({
     rose: "bg-rose-100 text-rose-700 border-rose-200",
   } as const;
   return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${map[tone]}`}
-    >
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${map[tone]}`}>
       {children}
     </span>
   );
@@ -164,7 +170,7 @@ function Section({
   );
 }
 
-/* ========= Modal (más grande + scroll) ========= */
+/* ========= Modal ========= */
 type ModalSize = "md" | "lg" | "xl" | "full";
 function Modal({
   open,
@@ -224,9 +230,14 @@ const addDays = (isoDay: string, n: number) => {
   return d.toISOString().slice(0, 10);
 };
 const estadoTone = (e: Estado) =>
-  e === "Abierta" ? "sky"
-  : e === "En trámite" || e === "Re Abierto" ? "amber"
-  : "slate";
+  e === "Abierta" ? "sky" : e === "En trámite" || e === "Re Abierto" ? "amber" : "slate";
+
+const fullName = (s?: Solicitante) => {
+  const a = (s?.nombres ?? "").trim();
+  const b = (s?.apellidos ?? "").trim();
+  const legacy = (s?.nombre ?? "").trim();
+  return (a || b) ? [a, b].filter(Boolean).join(" ") : legacy;
+};
 
 /* ========= Mapas desde backend ========= */
 const backTipo = {
@@ -240,20 +251,14 @@ const backEstado = {
   EN_TRAMITE: "En trámite",
   RE_ABIERTO: "Re Abierto",
   CERRADA: "Cerrada",
-  // tolerancia a mayúsculas/espacios
   "EN TRAMITE": "En trámite",
   "EN TRÁMITE": "En trámite",
 } as const;
 const backOrigen = { BENEFICIARIO: "Beneficiario", TERCERO: "Tercero" } as const;
-const backCanal = {
-  WEB: "Web",
-  TELEFONO: "Teléfono",
-  PRESENCIAL: "Presencial",
-  EMAIL: "Email",
-} as const;
+const backCanal = { WEB: "Web", TELEFONO: "Teléfono", PRESENCIAL: "Presencial", EMAIL: "Email" } as const;
 
 function fromDb(r: any): PQRS {
- const rawEstado: string = (r?.estado ?? r?.status ?? "ABIERTA") as string;
+  const rawEstado: string = (r?.estado ?? r?.status ?? "ABIERTA") as string;
   const uiEstado: Estado =
     (backEstado as any)[rawEstado] ??
     (rawEstado.replace(/\s+/g, "_").toUpperCase() === "RE_ABIERTO"
@@ -264,23 +269,24 @@ function fromDb(r: any): PQRS {
       ? "En trámite"
       : rawEstado === "CERRADA"
       ? "Cerrada"
-      : "Abierta"); // fallback seguro
+      : "Abierta");
 
   return {
-    id: r.id,
-    radicado: r.radicado,
+    id: typeof r.id === "number" ? r.id : Number(r.id),
+    radicado: r.radicado ?? "",
     fecha: (r.fecha ?? "").slice(0, 10),
     tipo: backTipo[r.tipo as keyof typeof backTipo],
     estado: uiEstado,
     origen: backOrigen[r.origen as keyof typeof backOrigen],
     canal: backCanal[r.canal as keyof typeof backCanal],
-    solicitante: r.solicitante ?? { tipoDoc: "CC", doc: "", nombre: "" },
+    solicitante: r.solicitante ?? { tipoDoc: "CC", doc: "", nombres: "", apellidos: "" },
     asunto: r.asunto ?? "",
     descripcion: r.descripcion ?? "",
     responsable: r.responsable ?? undefined,
     vencimiento: r.vencimiento ? r.vencimiento.slice(0, 10) : undefined,
     adjuntos: Array.isArray(r.adjuntos) ? r.adjuntos : [],
     historial: Array.isArray(r.historial) ? r.historial : [],
+    beneficiarioId: typeof r.beneficiarioId === "number" ? r.beneficiarioId : (r.beneficiarioId ? Number(r.beneficiarioId) : null),
   };
 }
 
@@ -291,20 +297,44 @@ async function load(setRows: (x: PQRS[]) => void) {
   const data = await res.json();
   setRows((data.items || []).map(fromDb));
 }
+
+function normalizeForApi(p: PQRS) {
+  const nombre = fullName(p.solicitante);
+  return {
+    ...p,
+    solicitante: {
+      ...p.solicitante,
+      nombre, // ✅ para schemas que esperan "nombre"
+    },
+    // ✅ asegura nullables
+    responsable: p.responsable ?? null,
+    vencimiento: p.vencimiento ?? null,
+    beneficiarioId: typeof p.beneficiarioId === "number" ? p.beneficiarioId : null,
+  };
+}
+
 async function apiCreate(p: PQRS) {
+  const payload = normalizeForApi(p);
+  // ✅ en CREATE no mandes id
+  const { id, ...rest } = payload as any;
+
   const resp = await fetch("/api/pqrs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(p),
+    body: JSON.stringify(rest), // ✅ manda UI ("Petición", etc)
   });
   if (!resp.ok) throw new Error(await resp.text());
   return resp.json();
 }
+
 async function apiUpdate(p: PQRS) {
+  if (!p.id) throw new Error("ID requerido para actualizar");
+  const payload = normalizeForApi(p);
+
   const resp = await fetch(`/api/pqrs/${p.id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(p),
+    body: JSON.stringify(payload), // ✅ manda UI ("En trámite", etc)
   });
   if (!resp.ok) throw new Error(await resp.text());
   return resp.json();
@@ -320,12 +350,8 @@ export default function PQRSPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<PQRS | null>(null);
 
-  // modal de cierre
   const [closeOpen, setCloseOpen] = useState(false);
-  const [selectedPqrs, setSelectedPqrs] = useState<{
-    id: string | number;
-    radicado?: string;
-  } | null>(null);
+  const [selectedPqrs, setSelectedPqrs] = useState<{ id: number; radicado?: string } | null>(null);
 
   useEffect(() => {
     load(setRows).catch(() => toast.error("No se pudo cargar la lista"));
@@ -336,7 +362,13 @@ export default function PQRSPage() {
     return rows.filter((r) => {
       const byQ =
         !t ||
-        [r.radicado, r.asunto, r.solicitante?.nombre || "", r.solicitante?.doc || "", r.responsable || ""]
+        [
+          r.radicado,
+          r.asunto,
+          fullName(r.solicitante) || "",
+          r.solicitante?.doc || "",
+          r.responsable || "",
+        ]
           .join(" ")
           .toLowerCase()
           .includes(t);
@@ -348,20 +380,21 @@ export default function PQRSPage() {
 
   const startCreate = () => {
     const draft: PQRS = {
-      id: "", // lo crea el backend
-      radicado: "", // lo genera el backend
+      id: undefined,
+      radicado: "",
       fecha: today(),
       tipo: "Petición",
       estado: "Abierta",
       origen: "Beneficiario",
       canal: "Web",
-      solicitante: { tipoDoc: "CC", doc: "", nombre: "", telefono: "", email: "" },
+      solicitante: { tipoDoc: "CC", doc: "", nombres: "", apellidos: "", telefono: "", email: "" },
       asunto: "",
       descripcion: "",
       responsable: "Mesa de ayuda",
       vencimiento: addDays(today(), 15),
       adjuntos: [],
       historial: [{ fecha: today(), evento: "Radicado" }],
+      beneficiarioId: null,
     };
     setEditing(draft);
     setOpen(true);
@@ -374,12 +407,17 @@ export default function PQRSPage() {
 
   const save = async () => {
     if (!editing) return;
-    // Validaciones suaves con toast
+
     if (!editing.asunto?.trim()) return toast.error("El asunto es obligatorio");
-    if (!editing.descripcion?.trim())
-      return toast.error("La descripción es obligatoria");
-    if (!editing.solicitante?.nombre?.trim())
-      return toast.error("El nombre del solicitante es obligatorio");
+    if (!editing.descripcion?.trim()) return toast.error("La descripción es obligatoria");
+    if (!editing.solicitante?.doc?.trim()) return toast.error("El documento del solicitante es obligatorio");
+
+    if (editing.origen === "Beneficiario") {
+      if (!editing.solicitante?.nombres?.trim()) return toast.error("Los nombres son obligatorios");
+      if (!editing.solicitante?.apellidos?.trim()) return toast.error("Los apellidos son obligatorios");
+    } else {
+      if (!fullName(editing.solicitante)?.trim()) return toast.error("El nombre del solicitante es obligatorio");
+    }
 
     const isNew = !editing.id;
 
@@ -397,17 +435,19 @@ export default function PQRSPage() {
   };
 
   const abrirSeguimiento = (row: PQRS) => {
+    if (!row.id) return;
     setSelectedPqrs({ id: row.id, radicado: row.radicado });
     setCloseOpen(true);
   };
 
   const cambiarEstado = async (row: PQRS, estado: Estado) => {
+    if (!row.id) return;
     try {
       await toast.promise(
         fetch(`/api/pqrs/${row.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ estado }),
+          body: JSON.stringify({ estado }), // ✅ manda UI, tu API lo mapea
         }),
         {
           loading: "Actualizando estado...",
@@ -416,9 +456,7 @@ export default function PQRSPage() {
         }
       );
       await load(setRows);
-    } catch {
-      /* toast ya mostró error */
-    }
+    } catch {}
   };
 
   const tone = (e: Estado) => estadoTone(e);
@@ -426,7 +464,6 @@ export default function PQRSPage() {
   return (
     <DashboardShell title={title}>
       <div className="rounded-md border border-[var(--subtle)] bg-[var(--panel)]">
-        {/* Barra superior */}
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--subtle)] px-4 py-3">
           <div className="flex items-center gap-2">
             <MessageSquare size={18} className="text-[var(--brand)]" />
@@ -442,29 +479,27 @@ export default function PQRSPage() {
                 className="w-64 pl-8"
               />
             </div>
+
             <Select value={fEstado} onChange={(e) => setFEstado(e.target.value as Estado | "")}>
               <option value="">Estado: Todos</option>
               {(["Abierta", "En trámite", "Re Abierto", "Cerrada"] as Estado[]).map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
+                <option key={s} value={s}>{s}</option>
               ))}
             </Select>
+
             <Select value={fTipo} onChange={(e) => setFTipo(e.target.value as Tipo | "")}>
               <option value="">Tipo: Todos</option>
               {(["Petición", "Queja", "Reclamo", "Sugerencia"] as Tipo[]).map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
+                <option key={t} value={t}>{t}</option>
               ))}
             </Select>
+
             <Button onClick={startCreate}>
               <Plus size={16} /> Nuevo PQRS
             </Button>
           </div>
         </div>
 
-        {/* Tabla */}
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="border-b border-[var(--subtle)] text-slate-500">
@@ -487,20 +522,26 @@ export default function PQRSPage() {
                     : r.vencimiento && new Date(r.vencimiento) < new Date()
                     ? "rose"
                     : "emerald";
+
+                const nombre = fullName(r.solicitante) || "—";
+
                 return (
-                  <tr key={r.id} className="border-b border-[var(--subtle)]/70">
+                  <tr key={r.id ?? r.radicado} className="border-b border-[var(--subtle)]/70">
                     <td className="py-2 pl-4 pr-3 font-medium">{r.radicado}</td>
                     <td className="px-3 py-2">{r.fecha}</td>
                     <td className="px-3 py-2">{r.tipo}</td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-2">
                         <User size={14} className="text-slate-400" />
-                        <span>{r.solicitante?.nombre || "—"}</span>
+                        <span>{nombre}</span>
                         {r.solicitante?.doc && (
                           <Badge tone="slate">
                             {r.solicitante?.tipoDoc ? r.solicitante.tipoDoc + " " : ""}
                             {r.solicitante.doc}
                           </Badge>
+                        )}
+                        {typeof r.beneficiarioId === "number" && r.beneficiarioId > 0 && (
+                          <Badge tone="emerald">Beneficiario vinculado</Badge>
                         )}
                       </div>
                     </td>
@@ -524,10 +565,12 @@ export default function PQRSPage() {
                           <Pencil size={14} /> Detalle
                         </Button>
 
-                        <Button variant="outline" onClick={() => abrirSeguimiento(r)}
+                        <Button
+                          variant="outline"
+                          onClick={() => abrirSeguimiento(r)}
                           className="h-8 px-3 rounded-md shadow-sm border-slate-200 hover:bg-white"
                           title="Abrir seguimiento"
-                          >
+                        >
                           <MessageSquare size={14} /> Seguimiento
                         </Button>
                       </div>
@@ -535,6 +578,7 @@ export default function PQRSPage() {
                   </tr>
                 );
               })}
+
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={8} className="py-6 text-center text-slate-500">
@@ -547,27 +591,19 @@ export default function PQRSPage() {
         </div>
       </div>
 
-      {/* Modal crear/editar */}
-      <PQRSModal
-        open={open}
-        setOpen={setOpen}
-        editing={editing}
-        setEditing={setEditing}
-        onSave={save}
-      />
+      <PQRSModal open={open} setOpen={setOpen} editing={editing} setEditing={setEditing} onSave={save} />
 
-      {/* Modal de cierre / seguimiento */}
       <ClosePqrsModal
         open={closeOpen}
         onClose={() => setCloseOpen(false)}
         pqrsId={selectedPqrs?.id ?? null}
         radicado={selectedPqrs?.radicado}
-        mode="seguimiento"                // << NUEVO: el modal se renderiza en modo Seguimiento
-        onUpdated={async () => {          // << opcional: cuando agregas nota / reasignas / cambias algo
+        mode="seguimiento"
+        onUpdated={async () => {
           await load(setRows);
           toast.success("Seguimiento guardado");
         }}
-        onClosed={async () => {           // << cuando desde el modal deciden Cerrar la PQR
+        onClosed={async () => {
           await load(setRows);
           setCloseOpen(false);
           toast.success("PQRS cerrada correctamente");
@@ -577,7 +613,7 @@ export default function PQRSPage() {
   );
 }
 
-/* ========= Modal de detalle / creación ========= */
+/* ========= Modal ========= */
 function PQRSModal({
   open,
   setOpen,
@@ -591,6 +627,9 @@ function PQRSModal({
   setEditing: (p: PQRS | null) => void;
   onSave: () => void;
 }) {
+  const [benefLoading, setBenefLoading] = useState(false);
+  const [benefLast, setBenefLast] = useState<"idle" | "found" | "notfound" | "created">("idle");
+
   if (!editing) return null;
 
   const onAdj = (files: FileList | null) => {
@@ -598,11 +637,9 @@ function PQRSModal({
     const arr = Array.from(files).map((f) => ({ name: f.name, size: f.size }));
     setEditing({ ...editing, adjuntos: [...editing.adjuntos, ...arr] });
   };
+
   const rmAdj = (name: string) =>
-    setEditing({
-      ...editing,
-      adjuntos: editing.adjuntos.filter((a) => a.name !== name),
-    });
+    setEditing({ ...editing, adjuntos: editing.adjuntos.filter((a) => a.name !== name) });
 
   const addHist = () =>
     setEditing({
@@ -613,6 +650,101 @@ function PQRSModal({
       ],
     });
 
+  const buscarBeneficiario = async () => {
+    const tipo = editing.solicitante?.tipoDoc || "CC";
+    const doc = (editing.solicitante?.doc || "").trim();
+
+    if (!tipo || !doc) return toast.error("Ingrese tipo y documento para buscar beneficiario.");
+
+    try {
+      setBenefLoading(true);
+      const res = await fetch(
+        `/api/beneficiarios/buscar?tipo=${encodeURIComponent(tipo)}&doc=${encodeURIComponent(doc)}`,
+        { cache: "no-store" }
+      );
+
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j?.error ?? "Error buscando beneficiario.");
+      }
+
+      const data = await res.json();
+
+      if (!data) {
+        setBenefLast("notfound");
+        setEditing({ ...editing, beneficiarioId: null });
+        return toast("No existe. Puedes crearlo con el botón 'Crear beneficiario'.");
+      }
+
+      const benefId = typeof data.id === "number" ? data.id : Number(data.id);
+      setBenefLast("found");
+
+      setEditing({
+        ...editing,
+        beneficiarioId: Number.isFinite(benefId) ? benefId : null,
+        solicitante: {
+          ...editing.solicitante,
+          tipoDoc: (data.tipo_doc ?? editing.solicitante?.tipoDoc ?? "CC") as TipoDoc,
+          doc: data.num_doc ?? editing.solicitante?.doc ?? "",
+          nombres: data.nombres ?? editing.solicitante?.nombres ?? "",
+          apellidos: data.apellidos ?? editing.solicitante?.apellidos ?? "",
+          telefono: data.telefono ?? editing.solicitante?.telefono ?? "",
+          email: data.email ?? editing.solicitante?.email ?? "",
+        },
+      });
+
+      toast.success("Beneficiario encontrado y vinculado ✅");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Error buscando beneficiario");
+    } finally {
+      setBenefLoading(false);
+    }
+  };
+
+  const crearBeneficiario = async () => {
+    const tipo = editing.solicitante?.tipoDoc || "CC";
+    const doc = (editing.solicitante?.doc || "").trim();
+    const nombres = (editing.solicitante?.nombres || "").trim();
+    const apellidos = (editing.solicitante?.apellidos || "").trim();
+
+    if (!tipo || !doc) return toast.error("Falta tipo/doc del beneficiario.");
+    if (!nombres) return toast.error("Faltan los nombres.");
+    if (!apellidos) return toast.error("Faltan los apellidos.");
+
+    try {
+      setBenefLoading(true);
+
+      const payload = {
+        tipo_doc: tipo,
+        num_doc: doc,
+        nombres,
+        apellidos,
+        telefono: editing.solicitante?.telefono ?? "",
+        email: editing.solicitante?.email ?? "",
+      };
+
+      const res = await fetch("/api/beneficiarios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j?.error ?? "No se pudo crear el beneficiario.");
+
+      const benefId = typeof j.id === "number" ? j.id : Number(j.id);
+
+      setBenefLast("created");
+      setEditing({ ...editing, beneficiarioId: Number.isFinite(benefId) ? benefId : null });
+
+      toast.success("Beneficiario creado y vinculado ✅");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Error creando beneficiario");
+    } finally {
+      setBenefLoading(false);
+    }
+  };
+
   return (
     <Modal
       open={open}
@@ -621,52 +753,35 @@ function PQRSModal({
       size="xl"
       actions={
         <>
-          <Button variant="ghost" onClick={() => setOpen(false)}>
-            Cancelar
-          </Button>
+          <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
           <Button onClick={onSave}>Guardar</Button>
         </>
       }
     >
-      {/* MÁS columnas y más espacio a la derecha */}
       <div className="grid gap-6 lg:grid-cols-4 2xl:grid-cols-5">
-        {/* Datos principales (izquierda) */}
         <div className="grid gap-4 lg:col-span-3 2xl:col-span-3">
           <Section icon={<FileText size={18} />} title="Datos">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <Field label="Tipo">
-                <Select
-                  value={editing.tipo}
-                  onChange={(e) => setEditing({ ...editing, tipo: e.target.value as Tipo })}
-                >
+                <Select value={editing.tipo} onChange={(e) => setEditing({ ...editing, tipo: e.target.value as Tipo })}>
                   {(["Petición", "Queja", "Reclamo", "Sugerencia"] as Tipo[]).map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
+                    <option key={t} value={t}>{t}</option>
                   ))}
                 </Select>
               </Field>
+
               <Field label="Estado">
-                <Select
-                  value={editing.estado}
-                  onChange={(e) => setEditing({ ...editing, estado: e.target.value as Estado })}
-                >
+                <Select value={editing.estado} onChange={(e) => setEditing({ ...editing, estado: e.target.value as Estado })}>
                   {(["Abierta", "En trámite", "Re Abierto", "Cerrada"] as Estado[]).map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
+                    <option key={s} value={s}>{s}</option>
                   ))}
                 </Select>
               </Field>
+
               <Field label="Canal">
-                <Select
-                  value={editing.canal}
-                  onChange={(e) => setEditing({ ...editing, canal: e.target.value as Canal })}
-                >
+                <Select value={editing.canal} onChange={(e) => setEditing({ ...editing, canal: e.target.value as Canal })}>
                   {(["Web", "Teléfono", "Presencial", "Email"] as Canal[]).map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
+                    <option key={c} value={c}>{c}</option>
                   ))}
                 </Select>
               </Field>
@@ -674,58 +789,40 @@ function PQRSModal({
               <Field label="Origen">
                 <Select
                   value={editing.origen}
-                  onChange={(e) => setEditing({ ...editing, origen: e.target.value as Origen })}
+                  onChange={(e) => {
+                    const val = e.target.value as Origen;
+                    setEditing({ ...editing, origen: val, beneficiarioId: val === "Tercero" ? null : editing.beneficiarioId ?? null });
+                  }}
                 >
                   {(["Beneficiario", "Tercero"] as Origen[]).map((o) => (
-                    <option key={o} value={o}>
-                      {o}
-                    </option>
+                    <option key={o} value={o}>{o}</option>
                   ))}
                 </Select>
               </Field>
+
               <Field label="Responsable">
-                <Input
-                  value={editing.responsable || ""}
-                  onChange={(e) => setEditing({ ...editing, responsable: e.target.value })}
-                  placeholder="Área/Usuario"
-                />
-              </Field>
-              <Field label="Vencimiento (SLA)">
-                <Input
-                  type="date"
-                  value={editing.vencimiento || ""}
-                  onChange={(e) => setEditing({ ...editing, vencimiento: e.target.value })}
-                />
+                <Input value={editing.responsable || ""} onChange={(e) => setEditing({ ...editing, responsable: e.target.value })} />
               </Field>
 
-              {/* Asunto más amplio */}
+              <Field label="Vencimiento (SLA)">
+                <Input type="date" value={editing.vencimiento || ""} onChange={(e) => setEditing({ ...editing, vencimiento: e.target.value })} />
+              </Field>
+
               <div className="md:col-span-3">
                 <Field label="Asunto">
-                  <Textarea
-                    rows={3}
-                    value={editing.asunto}
-                    onChange={(e) => setEditing({ ...editing, asunto: e.target.value })}
-                    placeholder="Resumen breve"
-                  />
+                  <Textarea rows={3} value={editing.asunto} onChange={(e) => setEditing({ ...editing, asunto: e.target.value })} />
                 </Field>
               </div>
 
               <div className="md:col-span-3">
                 <Field label="Descripción">
-                  <Textarea
-                    rows={4}
-                    value={editing.descripcion}
-                    onChange={(e) =>
-                      setEditing({ ...editing, descripcion: e.target.value })
-                    }
-                    placeholder="Detalle del caso"
-                  />
+                  <Textarea rows={4} value={editing.descripcion} onChange={(e) => setEditing({ ...editing, descripcion: e.target.value })} />
                 </Field>
               </div>
             </div>
           </Section>
 
-          <Section icon={<Paperclip size={18} />} title="Adjuntos (PDF/otros)">
+          <Section icon={<Paperclip size={18} />} title="Adjuntos">
             <div className="grid gap-3">
               <input type="file" multiple onChange={(e) => onAdj(e.target.files)} />
               {editing.adjuntos.length > 0 && (
@@ -742,13 +839,9 @@ function PQRSModal({
                       {editing.adjuntos.map((a) => (
                         <tr key={a.name} className="border-b border-[var(--subtle)]/70">
                           <td className="px-3 py-2">{a.name}</td>
+                          <td className="px-3 py-2">{a.size ? (a.size / 1024).toFixed(1) + " KB" : "—"}</td>
                           <td className="px-3 py-2">
-                            {a.size ? (a.size / 1024).toFixed(1) + " KB" : "—"}
-                          </td>
-                          <td className="px-3 py-2">
-                            <Button variant="ghost" onClick={() => rmAdj(a.name)}>
-                              Quitar
-                            </Button>
+                            <Button variant="ghost" onClick={() => rmAdj(a.name)}>Quitar</Button>
                           </td>
                         </tr>
                       ))}
@@ -760,96 +853,67 @@ function PQRSModal({
           </Section>
         </div>
 
-        {/* Lado derecho: más ancho */}
         <div className="grid gap-4 lg:col-span-1 2xl:col-span-2">
-          <Section icon={<Tag size={18} />} title="Solicitante">
-            <div className="grid grid-cols-1 gap-4">
-              {/* Fila Tipo de doc + Documento alineada */}
+          <Section icon={<Tag size={18} />} title="Solicitante / Beneficiario">
+            <div className="grid gap-4">
+              <div className="flex items-center gap-2">
+                {editing.origen === "Beneficiario" ? (
+                  editing.beneficiarioId ? <Badge tone="emerald">Beneficiario vinculado</Badge> : <Badge tone="amber">Sin vincular</Badge>
+                ) : (
+                  <Badge tone="slate">Origen: Tercero</Badge>
+                )}
+              </div>
+
               <div className="grid items-end grid-cols-1 gap-4 md:grid-cols-2">
-                <Field
-                  label={
-                    <span className="block h-5 leading-5 whitespace-nowrap">
-                      Tipo de documento
-                    </span>
-                  }
-                >
+                <Field label="Tipo de documento">
                   <Select
                     value={editing.solicitante?.tipoDoc || "CC"}
-                    onChange={(e) =>
-                      setEditing({
-                        ...editing,
-                        solicitante: {
-                          ...editing.solicitante,
-                          tipoDoc: e.target.value as TipoDoc,
-                        },
-                      })
-                    }
-                    className="w-full"
+                    onChange={(e) => setEditing({ ...editing, solicitante: { ...editing.solicitante, tipoDoc: e.target.value as TipoDoc } })}
                   >
-                    <option value="CC">CC</option>
-                    <option value="CE">CE</option>
-                    <option value="TI">TI</option>
-                    <option value="PAS">PAS</option>
+                    {(["CC","TI","CE","RC","PA","PEP","PPT","NIT","OTRO"] as TipoDoc[]).map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
                   </Select>
                 </Field>
 
-                <Field label={<span className="block h-5 leading-5">Documento</span>}>
+                <Field label="Documento">
                   <Input
-                    inputMode="numeric"
-                    pattern="[0-9A-Za-z.-]{4,}"
-                    placeholder="Número"
                     value={editing.solicitante?.doc || ""}
-                    onChange={(e) =>
-                      setEditing({
-                        ...editing,
-                        solicitante: { ...editing.solicitante, doc: e.target.value },
-                      })
-                    }
+                    onChange={(e) => setEditing({ ...editing, solicitante: { ...editing.solicitante, doc: e.target.value } })}
+                    placeholder="Número"
                   />
                 </Field>
               </div>
 
-              <Field label="Nombre">
-                <Input
-                  value={editing.solicitante?.nombre || ""}
-                  onChange={(e) =>
-                    setEditing({
-                      ...editing,
-                      solicitante: { ...editing.solicitante, nombre: e.target.value },
-                    })
-                  }
-                  placeholder="Nombre completo"
-                />
-              </Field>
+              {editing.origen === "Beneficiario" && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="outline" type="button" onClick={buscarBeneficiario} disabled={benefLoading}>
+                    <Search size={14} /> {benefLoading ? "Buscando..." : "Buscar beneficiario"}
+                  </Button>
+                  <Button variant="outline" type="button" onClick={crearBeneficiario} disabled={benefLoading}>
+                    <Plus size={14} /> Crear beneficiario
+                  </Button>
+                  {benefLast === "notfound" && <Badge tone="rose">No existe</Badge>}
+                  {benefLast === "found" && <Badge tone="emerald">Encontrado</Badge>}
+                  {benefLast === "created" && <Badge tone="emerald">Creado</Badge>}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Field label="Nombres">
+                  <Input value={editing.solicitante?.nombres || ""} onChange={(e) => setEditing({ ...editing, solicitante: { ...editing.solicitante, nombres: e.target.value } })} />
+                </Field>
+                <Field label="Apellidos">
+                  <Input value={editing.solicitante?.apellidos || ""} onChange={(e) => setEditing({ ...editing, solicitante: { ...editing.solicitante, apellidos: e.target.value } })} />
+                </Field>
+              </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <Field label="Teléfono">
-                  <Input
-                    type="tel"
-                    inputMode="tel"
-                    value={editing.solicitante?.telefono || ""}
-                    onChange={(e) =>
-                      setEditing({
-                        ...editing,
-                        solicitante: { ...editing.solicitante, telefono: e.target.value },
-                      })
-                    }
-                    placeholder="300 000 0000"
-                  />
+                  <Input value={editing.solicitante?.telefono || ""} onChange={(e) => setEditing({ ...editing, solicitante: { ...editing.solicitante, telefono: e.target.value } })} />
                 </Field>
                 <Field label="Email">
-                  <Input
-                    type="email"
-                    autoComplete="email"
-                    value={editing.solicitante?.email || ""}
-                    onChange={(e) =>
-                      setEditing({
-                        ...editing,
-                        solicitante: { ...editing.solicitante, email: e.target.value },
-                      })
-                    }
-                    placeholder="correo@dominio.com"
-                  />
+                  <Input type="email" value={editing.solicitante?.email || ""} onChange={(e) => setEditing({ ...editing, solicitante: { ...editing.solicitante, email: e.target.value } })} />
                 </Field>
               </div>
             </div>
@@ -860,19 +924,14 @@ function PQRSModal({
               <ul className="space-y-2">
                 {editing.historial.map((h, i) => (
                   <li key={i} className="rounded border border-[var(--subtle)] bg-white p-3 text-sm">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Clock size={14} className="text-slate-400" />
-                        <span className="font-medium">{h.fecha}</span>
-                        <span className="text-slate-600">— {h.evento}</span>
-                      </div>
-                      {h.nota && <span className="text-slate-500">{h.nota}</span>}
+                    <div className="flex items-center gap-2">
+                      <Clock size={14} className="text-slate-400" />
+                      <span className="font-medium">{h.fecha}</span>
+                      <span className="text-slate-600">— {h.evento}</span>
+                      {h.nota && <span className="text-slate-500">({h.nota})</span>}
                     </div>
                   </li>
                 ))}
-                {editing.historial.length === 0 && (
-                  <li className="text-sm text-slate-500">Sin eventos.</li>
-                )}
               </ul>
 
               <div className="flex items-center gap-2">

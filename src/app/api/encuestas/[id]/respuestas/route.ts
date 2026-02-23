@@ -1,61 +1,49 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// Next.js 15+: params es "async". Debes esperarlo.
-export async function POST(
-  req: Request,
-  ctx: { params: Promise<{ id: string }> }
-) {
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+async function getId(ctx: { params: any }) {
+  const p = await ctx.params; // ✅ soporta objeto o Promise
+  const raw = String(p?.id ?? "").trim();
+  const id = Number(raw);
+  return Number.isFinite(id) ? id : null;
+}
+
+export async function POST(req: Request, ctx: { params: any }) {
   try {
-    const { id } = await ctx.params; // ✅ await
+    const id = await getId(ctx);
     if (!id) {
-      return NextResponse.json(
-        { error: "Falta el parámetro id de la encuesta" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "ID inválido" }, { status: 400 });
     }
 
-    const body = await req.json().catch(() => ({}));
-    const respondente = body?.respondente ?? {};
-    const valores = body?.valores ?? {};
-
-    if (!valores || typeof valores !== "object" || Array.isArray(valores)) {
-      return NextResponse.json(
-        { error: "El campo 'valores' es obligatorio y debe ser un objeto" },
-        { status: 400 }
-      );
-    }
+    const body = await req.json();
 
     // (Opcional) valida que exista la encuesta
     const enc = await prisma.encuesta.findUnique({
-      where: { id },
+      where: { id }, // ✅ Int
       select: { id: true },
     });
+
     if (!enc) {
-      return NextResponse.json(
-        { error: "Encuesta no encontrada" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Encuesta no encontrada" }, { status: 404 });
     }
 
-    // ✅ Tu schema actual no tiene 'respondente' JSON; usa estos campos:
-    // Respuesta { id, encuestaId, fecha, tipo_doc?, documento?, nombre?, valores Json, ... }
+    // ✅ Crea respuesta ligada a encuestaId (Int)
     const created = await prisma.respuesta.create({
       data: {
         encuestaId: id,
-        tipo_doc: respondente.tipo_doc ?? null,
-        documento: respondente.doc ?? null,
-        nombre: respondente.nombre ?? null,
-        valores,
+        tipo_doc: body?.tipo_doc ?? null,
+        documento: body?.documento ?? null,
+        nombre: body?.nombre ?? null,
+        valores: body?.valores ?? {}, // Json
       },
     });
 
     return NextResponse.json(created, { status: 201 });
-  } catch (err: any) {
-    console.error("[API respuestas] error:", err);
-    return NextResponse.json(
-      { error: err?.message || "Error inesperado al guardar la respuesta" },
-      { status: 500 }
-    );
+  } catch (e: any) {
+    console.error("[API respuestas] error:", e);
+    return NextResponse.json({ error: e?.message ?? "Error interno" }, { status: 500 });
   }
 }

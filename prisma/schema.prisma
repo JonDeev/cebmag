@@ -205,7 +205,7 @@ enum DiscapacidadTipo {
  * ================ Usuarios y roles ================
  */
 model User {
-  id        String   @id @default(cuid())
+  id        Int      @id @default(autoincrement())
   email     String   @unique
   password  String
   nombre    String?
@@ -214,33 +214,29 @@ model User {
   updatedAt DateTime @updatedAt
 
   roles         UserRole[]
-  pqrsAsignados PQRS[]     @relation("PQRSResponsable")
+  pqrsAsignados PQRS[] @relation("PQRSResponsable")
 }
 
 model Role {
-  id          String     @id @default(cuid())
-  name        String     @unique
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
   description String?
   permissions Json?
   users       UserRole[]
 }
 
 model UserRole {
-  userId String
-  roleId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  userId Int
+  roleId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@id([userId, roleId])
 }
 
-/**
- * ================ Beneficiarios ================
- */
 model Beneficiario {
-  id String @id @default(cuid())
+  id Int @id @default(autoincrement())
 
-  // Identificación
   tipoDoc         TipoDocumento @default(CC)
   doc             String        @unique
   nombres         String
@@ -248,12 +244,10 @@ model Beneficiario {
   fechaNacimiento DateTime?
   sexo            Sexo?
 
-  // Contacto
   telefono String?
   celular  String?
   email    String?
 
-  // Ubicación
   direccion    String?
   barrio       String?
   ciudad       String?
@@ -264,7 +258,6 @@ model Beneficiario {
   estrato      Int?
   sisbenNivel  String?
 
-  // Médica
   eps                 String?
   rh                  GrupoRH?
   discapacidad        DiscapacidadTipo?
@@ -273,33 +266,29 @@ model Beneficiario {
   medicamentos        String?
   antecedentes        String?
 
-  // Cultural
   comunidad           String?
   lengua              String?
   practicasCulturales String?
 
-  // Urgencias
   urgenciaNombre     String?
   urgenciaParentesco String?
   urgenciaTelefono   String?
   urgenciaDireccion  String?
 
-  // Otros
   regimen          RegimenSalud?
   estadoCivil      EstadoCivil?
   etnia            Etnia?
   gestante         Boolean?
-  victimaConflicto Boolean?      @default(false)
-  activo           Boolean       @default(true)
+  victimaConflicto Boolean? @default(false)
+  activo           Boolean  @default(true)
 
-  // Flex
   contacto   Json?
   ubicacion  Json?
   medico     Json?
   cultura    Json?
   urgencias  Json?
-  acudientes Json? // [{nombre,parentesco,telefono,direccion}]
-  docs       Json? // [{nombre,url,tipo}]
+  acudientes Json?
+  docs       Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -312,11 +301,8 @@ model Beneficiario {
   @@index([departamento, ciudad, barrio])
 }
 
-/**
- * ================ PQRS ================
- */
 model PQRS {
-  id       String     @id @default(cuid())
+  id       Int        @id @default(autoincrement())
   radicado String     @unique
   fecha    DateTime   @default(now())
   tipo     PQRSKind
@@ -324,21 +310,21 @@ model PQRS {
   origen   PQRSOrigen @default(BENEFICIARIO)
   canal    PQRSCanal  @default(WEB)
 
-  solicitante Json // {doc, nombre, telefono?, email?}
+  solicitante Json
   asunto      String
   descripcion String
 
-  responsable String? // texto libre (ej. "Mesa de ayuda")
+  responsable String?
   vencimiento DateTime?
 
-  adjuntos  Json? // [{name,size}]
-  historial Json? // [{fecha,evento,nota?}]
+  adjuntos  Json?
+  historial Json?
 
-  beneficiarioId String?
+  beneficiarioId Int?
   beneficiario   Beneficiario? @relation(fields: [beneficiarioId], references: [id])
 
-  responsableUserId String?
-  responsableUser   User?   @relation("PQRSResponsable", fields: [responsableUserId], references: [id])
+  responsableUserId Int?
+  responsableUser   User? @relation("PQRSResponsable", fields: [responsableUserId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -350,17 +336,14 @@ model PQRS {
   @@index([estado, vencimiento])
 }
 
-/**
- * ================ Encuestas ================
- */
 model Encuesta {
-  id          String         @id @default(cuid())
+  id          Int           @id @default(autoincrement())
   titulo      String
   servicio    String
   estado      EncuestaEstado @default(BORRADOR)
   descripcion String?
-  creada      DateTime       @default(now())
-  preguntas   Json // [{id,texto,tipo,opciones?}]
+  creada      DateTime      @default(now())
+  preguntas   Json
 
   respuestas Respuesta[]
 
@@ -368,35 +351,31 @@ model Encuesta {
 }
 
 model Respuesta {
-  id          String   @id @default(cuid())
-  encuestaId  String
-  fecha       DateTime @default(now())
-  tipo_doc    String?      // nuevo campo
-  documento   String?      // nuevo campo
-  nombre      String?      // nuevo campo
-  valores     Json
+  id         Int      @id @default(autoincrement())
+  encuestaId Int
+  fecha      DateTime @default(now())
+  tipo_doc   String?
+  documento  String?
+  nombre     String?
+  valores    Json
 
   encuesta Encuesta @relation(fields: [encuestaId], references: [id], onDelete: Cascade)
-  
+
   @@index([encuestaId, fecha])
 }
 
-
-/**
- * ================ Entregas (kits) ================
- */
 model Entrega {
-  id            String        @id @default(cuid())
-  comprobante   String        @unique
+  id            Int          @id @default(autoincrement())
+  comprobante   String       @unique
   fecha         DateTime
   responsable   String
   estado        EntregaEstado @default(PENDIENTE)
   kit           String?
-  items         Json // [{nombre,unidad,cantidad}]
+  items         Json
   observaciones String?
   adjuntos      Json?
 
-  beneficiarioId String?
+  beneficiarioId Int?
   beneficiario   Beneficiario? @relation(fields: [beneficiarioId], references: [id])
 
   createdAt DateTime @default(now())
@@ -406,16 +385,13 @@ model Entrega {
   @@index([fecha])
 }
 
-/**
- * ================ Actividades y gastos (COSTOS) ================
- */
 model Actividad {
-  id          String          @id @default(cuid())
-  codigo      String          @unique // A1..A8
+  id          Int            @id @default(autoincrement())
+  codigo      String         @unique
   nombre      String
   presupuesto Int
   estado      ActividadEstado @default(ABIERTA)
-  cerradaEn   DateTime? // opcional: cuándo se cerró
+  cerradaEn   DateTime?
 
   gastos    Gasto[]
   createdAt DateTime @default(now())
@@ -425,9 +401,9 @@ model Actividad {
 }
 
 model Gasto {
-  id          String         @id @default(cuid())
+  id          Int           @id @default(autoincrement())
   fecha       DateTime
-  actividadId String
+  actividadId Int
   categoria   GastoCategoria
   descripcion String
   proveedor   String?
@@ -445,19 +421,16 @@ model Gasto {
   @@index([categoria])
 }
 
-/**
- * ================ Inscripciones y contratos ================
- */
 model Inscripcion {
-  id         String            @id @default(cuid())
-  radicado   String            @unique
-  fecha      DateTime          @default(now())
+  id         Int              @id @default(autoincrement())
+  radicado   String           @unique
+  fecha      DateTime         @default(now())
   tipo       TipoPersonal
-  candidato  Json // {doc,nombres,apellidos,telefono,email,direccion,ciudad}
+  candidato  Json
   cargo      String
-  actividad  String // "A4 • Atención de enfermería", etc.
+  actividad  String
   estado     InscripcionEstado @default(EN_EVALUACION)
-  evaluacion Json // {puntaje, docsOk{...}, concepto, decision}
+  evaluacion Json
   adjuntos   Json?
 
   contrato Contrato?
@@ -470,8 +443,8 @@ model Inscripcion {
 }
 
 model Contrato {
-  id            String      @id @default(cuid())
-  inscripcionId String      @unique
+  id            Int       @id @default(autoincrement())
+  inscripcionId Int       @unique
   modalidad     Modalidad
   jornada       Jornada
   salarioTipo   SalarioTipo
