@@ -1,9 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import DashboardShell from "../_components/DashboardShell";
 import {
-  Plus, ClipboardList, BarChart3, X, Trash2, Pencil, Save, Play,
+  Plus,
+  ClipboardList,
+  BarChart3,
+  X,
+  Trash2,
+  Pencil,
+  Save,
+  Play,
+  Search,
 } from "lucide-react";
 import {
   getEncuestas,
@@ -21,6 +29,9 @@ const genQId = () => `q_${Math.random().toString(36).slice(2, 10)}`;
 type Estado = "BORRADOR" | "ACTIVA" | "INACTIVA";
 type TipoPregunta = "likert" | "si_no" | "opciones" | "texto";
 
+// Prisma TipoDocumento (ya lo vienes usando en beneficiario)
+type TipoDoc = "CC" | "TI" | "CE" | "RC" | "PA" | "PEP" | "PPT" | "NIT" | "OTRO";
+
 interface Pregunta {
   id?: string;
   tempId?: string;
@@ -30,7 +41,7 @@ interface Pregunta {
 }
 
 interface Encuesta {
-  id?: string;
+  id?: number; // ✅ Int
   titulo: string;
   servicio: string;
   estado: Estado;
@@ -40,11 +51,19 @@ interface Encuesta {
 }
 
 interface Respuesta {
-  encuestaId: string;
+  encuestaId: number; // ✅ Int
   respondente: {
-    tipo_doc?: "CC" | "TI" | "CE" | "RC" | "PA";
+    tipo_doc?: TipoDoc;
     doc?: string;
-    nombre?: string;
+
+    // UI extra para crear/vincular (la BD solo guarda nombre/documento/tipo_doc)
+    nombre?: string; // nombre completo (se guarda)
+    nombres?: string; // opcional para crear beneficiario
+    apellidos?: string; // opcional para crear beneficiario
+    telefono?: string;
+    email?: string;
+
+    beneficiarioId?: number | null;
   };
   valores: Record<string, number | "SI" | "NO" | string>;
 }
@@ -58,7 +77,8 @@ function Button({
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "solid" | "outline" | "ghost";
 }) {
-  const base = "inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm transition";
+  const base =
+    "inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm transition";
   const styles =
     variant === "solid"
       ? "bg-[var(--brand)] text-white hover:opacity-90"
@@ -139,17 +159,13 @@ function Modal({
 
   return (
     <div className="fixed inset-0 z-50">
-      {/* Fondo */}
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-
-      {/* Contenedor centrado */}
       <div className="absolute inset-0 flex items-center justify-center p-4">
         <div
           className={`${
             wide ? "w-[min(980px,96vw)]" : "w-[min(640px,92vw)]"
           } max-h-[90vh] overflow-hidden rounded-lg border border-[var(--subtle)] bg-[var(--panel)] shadow-xl flex flex-col`}
         >
-          {/* Header (no scrollea) */}
           <div className="flex items-center justify-between border-b border-[var(--subtle)] px-4 py-3 shrink-0">
             <h4 className="text-sm font-semibold">{title}</h4>
             <button onClick={onClose} className="p-1 rounded hover:bg-slate-100">
@@ -157,12 +173,8 @@ function Modal({
             </button>
           </div>
 
-          {/* Contenido (scrollea) */}
-          <div className="min-h-0 p-4 overflow-y-auto grow">
-            {children}
-          </div>
+          <div className="min-h-0 p-4 overflow-y-auto grow">{children}</div>
 
-          {/* Footer (no scrollea) */}
           <div className="flex items-center justify-end gap-2 border-t border-[var(--subtle)] px-4 py-3 shrink-0">
             {actions}
           </div>
@@ -177,7 +189,7 @@ export default function EncuestasPage() {
   const [encuestas, setEncuestas] = useState<Encuesta[]>([]);
   const [q, setQ] = useState("");
   const [estado, setEstado] = useState<"" | Estado>("");
-  const [sel, setSel] = useState<string | null>(null);
+  const [sel, setSel] = useState<number | null>(null); // ✅ Int
 
   const [openEdit, setOpenEdit] = useState(false);
   const [draft, setDraft] = useState<Encuesta | null>(null);
@@ -193,7 +205,6 @@ export default function EncuestasPage() {
     (async () => {
       const data = (await getEncuestas()) as Encuesta[];
 
-      // Arregla encuestas viejas sin id en preguntas
       const fixed: Encuesta[] = await Promise.all(
         data.map(async (e: Encuesta) => {
           const needsFix = e.preguntas.some((p: Pregunta) => !p.id);
@@ -210,7 +221,7 @@ export default function EncuestasPage() {
       );
 
       setEncuestas(fixed);
-      if (fixed.length > 0 && !sel) setSel(fixed[0].id!);
+      if (fixed.length > 0 && sel == null) setSel(fixed[0].id ?? null);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -228,10 +239,7 @@ export default function EncuestasPage() {
     return encuestas.filter((e) => {
       const okQ =
         !t ||
-        [e.titulo, e.servicio, e.descripcion || ""]
-          .join(" ")
-          .toLowerCase()
-          .includes(t);
+        [e.titulo, e.servicio, e.descripcion || ""].join(" ").toLowerCase().includes(t);
       const okE = !estado || e.estado === estado;
       return okQ && okE;
     });
@@ -276,6 +284,12 @@ export default function EncuestasPage() {
         ? await updateEncuesta(draft.id, data)
         : await createEncuesta(data);
 
+      // ✅ si el backend falló, tu api retorna null
+      if (!saved || !saved.id) {
+        toast.error("No se pudo guardar la encuesta. Revisa el error del backend.");
+        return;
+      }
+
       setEncuestas((prev) =>
         draft.id ? prev.map((e) => (e.id === saved.id ? saved : e)) : [saved, ...prev]
       );
@@ -289,11 +303,11 @@ export default function EncuestasPage() {
   };
 
   const eliminarEncuesta = async () => {
-    if (!targetDelete) return;
-    const ok = await deleteEncuesta(targetDelete.id!);
+    if (!targetDelete?.id) return;
+    const ok = await deleteEncuesta(targetDelete.id);
     if (ok) {
       const data = await getEncuestas();
-      setEncuestas(data);
+      setEncuestas(data as any);
       if (sel === targetDelete.id) setSel(null);
       toast.success("Encuesta eliminada correctamente");
     }
@@ -303,9 +317,10 @@ export default function EncuestasPage() {
 
   /* ==================== Respuestas ==================== */
   const registrarResp = (e: Encuesta) => {
+    if (!e.id) return;
     const r: Respuesta = {
-      encuestaId: e.id!,
-      respondente: { tipo_doc: "CC" },
+      encuestaId: e.id,
+      respondente: { tipo_doc: "CC", doc: "", nombre: "", nombres: "", apellidos: "", beneficiarioId: null },
       valores: {},
     };
     setRespDraft(r);
@@ -314,11 +329,27 @@ export default function EncuestasPage() {
 
   const guardarResp = async () => {
     if (!respDraft) return;
+
+    // ✅ asegurar nombre final
+    const nombres = (respDraft.respondente?.nombres ?? "").trim();
+    const apellidos = (respDraft.respondente?.apellidos ?? "").trim();
+    const nombreFinal =
+      (nombres || apellidos) ? [nombres, apellidos].filter(Boolean).join(" ") : (respDraft.respondente?.nombre ?? "").trim();
+
+    if (!respDraft.respondente?.tipo_doc) return toast.error("Tipo de documento requerido");
+    if (!respDraft.respondente?.doc?.trim()) return toast.error("Documento requerido");
+    if (!nombreFinal) return toast.error("Nombre requerido");
+
+    const payload: Respuesta = {
+      ...respDraft,
+      respondente: { ...respDraft.respondente, nombre: nombreFinal },
+    };
+
     try {
-      await saveRespuesta(respDraft);
+      await saveRespuesta(payload);
       toast.success("Respuesta registrada");
       const updated = await getEncuestas();
-      setEncuestas(updated);
+      setEncuestas(updated as any);
       setOpenResp(false);
     } catch (err: any) {
       const msg =
@@ -374,7 +405,7 @@ export default function EncuestasPage() {
                       </div>
                       <div className="text-xs text-slate-500">
                         {e.servicio || "—"} • {e.estado} •{" "}
-                        {new Date(e.creada || "").toLocaleDateString()}
+                        {e.creada ? new Date(e.creada).toLocaleDateString() : "—"}
                       </div>
                     </button>
                     <div className="flex items-center gap-1">
@@ -487,15 +518,15 @@ export default function EncuestasPage() {
                   <div className="grid gap-4">
                     {resultados.map((r: any, idx: number) => (
                       <div
-                        key={r.pid}
+                        key={r.pid ?? idx}
                         className="rounded border border-[var(--subtle)] bg-white p-3"
                       >
                         <div className="mb-2 text-sm font-medium">
-                          {encSel.preguntas[idx].texto}
+                          {encSel.preguntas[idx]?.texto ?? "Pregunta"}
                         </div>
                         {r.tipo === "likert" && (
                           <div className="text-xs text-slate-600">
-                            Promedio: <b>{r.avg.toFixed(1)}</b> / 5
+                            Promedio: <b>{Number(r.avg).toFixed(1)}</b> / 5
                           </div>
                         )}
                         {r.tipo === "si_no" && (
@@ -544,6 +575,7 @@ export default function EncuestasPage() {
         setDraft={setDraft}
         onSave={guardarEncuesta}
       />
+
       <RespuestaModal
         open={openResp}
         setOpen={setOpenResp}
@@ -552,6 +584,7 @@ export default function EncuestasPage() {
         setDraft={setRespDraft}
         onSave={guardarResp}
       />
+
       {/* Modal eliminar encuesta */}
       <Modal
         open={openDelete}
@@ -632,9 +665,7 @@ function EncuestaModal({
       }
       wide
     >
-      {/* Grid de 2 columnas: izquierda fija (340px) / derecha flexible */}
       <div className="grid gap-6 grid-cols-1 md:grid-cols-[340px_1fr] items-start">
-        {/* --- Columna izquierda (fija + sticky) --- */}
         <div className="grid gap-4 md:col-span-1 md:sticky md:top-0 w-[340px] shrink-0">
           <label className="text-sm">
             Título
@@ -656,9 +687,7 @@ function EncuestaModal({
             Estado
             <Select
               value={draft.estado}
-              onChange={(e) =>
-                setDraft({ ...draft, estado: e.target.value as Estado })
-              }
+              onChange={(e) => setDraft({ ...draft, estado: e.target.value as Estado })}
             >
               <option value="BORRADOR">Borrador</option>
               <option value="ACTIVA">Activa</option>
@@ -671,9 +700,7 @@ function EncuestaModal({
             <Textarea
               rows={3}
               value={draft.descripcion}
-              onChange={(e) =>
-                setDraft({ ...draft, descripcion: e.target.value })
-              }
+              onChange={(e) => setDraft({ ...draft, descripcion: e.target.value })}
             />
           </label>
 
@@ -694,15 +721,11 @@ function EncuestaModal({
           </div>
         </div>
 
-        {/* --- Columna derecha (preguntas) --- */}
         <div className="min-w-0 md:col-span-1">
           <div className="mb-2 text-sm font-semibold">Preguntas</div>
           <ol className="space-y-2">
             {draft.preguntas.map((p, idx) => (
-              <li
-                key={p.id}
-                className="rounded border border-[var(--subtle)] bg-white p-3"
-              >
+              <li key={p.id} className="rounded border border-[var(--subtle)] bg-white p-3">
                 {p.tipo === "opciones" && (
                   <div className="grid gap-2 mt-3">
                     <div className="text-sm font-medium">Opciones</div>
@@ -722,9 +745,7 @@ function EncuestaModal({
                           variant="ghost"
                           onClick={() => {
                             const arr = [...draft.preguntas];
-                            const opciones = (p.opciones || []).filter(
-                              (_, j) => j !== i
-                            );
+                            const opciones = (p.opciones || []).filter((_, j) => j !== i);
                             arr[idx] = { ...p, opciones };
                             setDraft({ ...draft, preguntas: arr });
                           }}
@@ -741,9 +762,7 @@ function EncuestaModal({
                         const arr = [...draft.preguntas];
                         const opciones = [
                           ...(p.opciones || []),
-                          `Opción ${
-                            p.opciones?.length ? p.opciones.length + 1 : 1
-                          }`,
+                          `Opción ${p.opciones?.length ? p.opciones.length + 1 : 1}`,
                         ];
                         arr[idx] = { ...p, opciones };
                         setDraft({ ...draft, preguntas: arr });
@@ -763,11 +782,7 @@ function EncuestaModal({
                       setDraft({ ...draft, preguntas: arr });
                     }}
                   />
-                  <Button
-                    variant="ghost"
-                    onClick={() => rmPregunta(p.id || p.tempId)}
-                    title="Eliminar"
-                  >
+                  <Button variant="ghost" onClick={() => rmPregunta(p.id || p.tempId)} title="Eliminar">
                     <Trash2 size={14} />
                   </Button>
                 </div>
@@ -782,7 +797,6 @@ function EncuestaModal({
     </Modal>
   );
 }
-
 
 function RespuestaModal({
   open,
@@ -799,21 +813,131 @@ function RespuestaModal({
   setDraft: (r: Respuesta | null) => void;
   onSave: () => void;
 }) {
-  if (!encuesta || !draft) return null;
+  const [benefLoading, setBenefLoading] = useState(false);
+  const [benefState, setBenefState] = useState<"idle" | "found" | "notfound" | "created">("idle");
 
-  // Asegura tipo_doc por defecto al abrir
+  // ✅ HOOKS SIEMPRE ARRIBA (sin returns antes)
   useEffect(() => {
-    if (draft && (!draft.respondente || !draft.respondente.tipo_doc)) {
+    if (!open) return;
+    if (!draft) return;
+
+    if (!draft.respondente || !draft.respondente.tipo_doc) {
       setDraft({
         ...draft,
         respondente: { ...(draft.respondente || {}), tipo_doc: "CC" },
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, draft]);
+
+  // ✅ ahora sí puedes retornar (después de hooks)
+  if (!open) return null;
+  if (!encuesta || !draft) return null;
 
   const setVal = (pid: string, val: number | "SI" | "NO" | string) =>
     setDraft({ ...draft, valores: { ...draft.valores, [pid]: val } });
+
+  const setResp = (patch: Partial<Respuesta["respondente"]>) => {
+    setDraft({
+      ...draft,
+      respondente: { ...(draft.respondente || {}), ...patch },
+    });
+  };
+
+  const buscarBeneficiario = async () => {
+    const tipo = draft.respondente?.tipo_doc || "CC";
+    const doc = (draft.respondente?.doc || "").trim();
+    if (!tipo || !doc) return toast.error("Ingrese tipo y documento para buscar beneficiario.");
+
+    try {
+      setBenefLoading(true);
+      const res = await fetch(
+        `/api/beneficiarios/buscar?tipo=${encodeURIComponent(tipo)}&doc=${encodeURIComponent(doc)}`,
+        { cache: "no-store" }
+      );
+
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j?.error ?? "Error buscando beneficiario.");
+      }
+
+      const data = await res.json();
+
+      if (!data) {
+        setBenefState("notfound");
+        setResp({ beneficiarioId: null });
+        return toast("No existe. Puedes crearlo con el botón 'Crear beneficiario'.");
+      }
+
+      const idFound = typeof data.id === "number" ? data.id : Number(data.id);
+      const nombre = [data.nombres, data.apellidos].filter(Boolean).join(" ").trim();
+
+      setBenefState("found");
+      setResp({
+        beneficiarioId: Number.isFinite(idFound) ? idFound : null,
+        tipo_doc: (data.tipo_doc ?? tipo) as TipoDoc,
+        doc: data.num_doc ?? doc,
+        nombres: data.nombres ?? "",
+        apellidos: data.apellidos ?? "",
+        nombre: nombre || (draft.respondente?.nombre ?? ""),
+        telefono: data.telefono ?? "",
+        email: data.email ?? "",
+      });
+
+      toast.success("Beneficiario encontrado ✅");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Error buscando beneficiario");
+    } finally {
+      setBenefLoading(false);
+    }
+  };
+
+  const crearBeneficiario = async () => {
+    const tipo = draft.respondente?.tipo_doc || "CC";
+    const doc = (draft.respondente?.doc || "").trim();
+    const nombres = (draft.respondente?.nombres || "").trim();
+    const apellidos = (draft.respondente?.apellidos || "").trim();
+
+    if (!tipo || !doc) return toast.error("Falta tipo/doc.");
+    if (!nombres) return toast.error("Faltan los nombres.");
+    if (!apellidos) return toast.error("Faltan los apellidos.");
+
+    try {
+      setBenefLoading(true);
+
+      const payload = {
+        tipo_doc: tipo,
+        num_doc: doc,
+        nombres,
+        apellidos,
+        telefono: draft.respondente?.telefono ?? "",
+        email: draft.respondente?.email ?? "",
+      };
+
+      const res = await fetch("/api/beneficiarios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j?.error ?? "No se pudo crear el beneficiario.");
+
+      const idCreated = typeof j.id === "number" ? j.id : Number(j.id);
+      setBenefState("created");
+
+      setResp({
+        beneficiarioId: Number.isFinite(idCreated) ? idCreated : null,
+        nombre: [nombres, apellidos].filter(Boolean).join(" ").trim(),
+      });
+
+      toast.success("Beneficiario creado ✅");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Error creando beneficiario");
+    } finally {
+      setBenefLoading(false);
+    }
+  };
 
   return (
     <Modal
@@ -832,30 +956,37 @@ function RespuestaModal({
       }
       wide
     >
-      {/* Grid: izquierda fija (340px) / derecha flexible */}
       <div className="grid gap-6 grid-cols-1 md:grid-cols-[340px_1fr] items-start">
-        {/* --- Columna izquierda: datos del respondente (sticky) --- */}
+        {/* Col izquierda */}
         <div className="grid gap-3 md:sticky md:top-0 w-[340px] shrink-0">
+          <div className="flex items-center gap-2">
+            {draft.respondente?.beneficiarioId ? (
+              <span className="px-2 py-1 text-xs border rounded-full bg-emerald-50 text-emerald-700">
+                Beneficiario vinculado
+              </span>
+            ) : benefState === "notfound" ? (
+              <span className="px-2 py-1 text-xs border rounded-full bg-rose-50 text-rose-700">
+                No existe
+              </span>
+            ) : (
+              <span className="px-2 py-1 text-xs border rounded-full bg-slate-50 text-slate-700">
+                Sin vincular
+              </span>
+            )}
+          </div>
+
           <label className="text-sm">
             Tipo de documento
             <Select
               value={draft.respondente?.tipo_doc ?? "CC"}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  respondente: {
-                    ...(draft.respondente || {}),
-                    tipo_doc:
-                      e.target.value as Respuesta["respondente"]["tipo_doc"],
-                  },
-                })
-              }
+              onChange={(e) => {
+                setBenefState("idle");
+                setResp({ tipo_doc: e.target.value as TipoDoc, beneficiarioId: null });
+              }}
             >
-              <option value="CC">Cédula de Ciudadanía (CC)</option>
-              <option value="TI">Tarjeta de Identidad (TI)</option>
-              <option value="CE">Cédula de Extranjería (CE)</option>
-              <option value="RC">Registro Civil (RC)</option>
-              <option value="PA">Pasaporte (PA)</option>
+              {(["CC","TI","CE","RC","PA","PEP","PPT","NIT","OTRO"] as TipoDoc[]).map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
             </Select>
           </label>
 
@@ -863,44 +994,44 @@ function RespuestaModal({
             Documento
             <Input
               value={draft.respondente?.doc || ""}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  respondente: {
-                    ...(draft.respondente || {}),
-                    doc: e.target.value,
-                  },
-                })
-              }
+              onChange={(e) => {
+                setBenefState("idle");
+                setResp({ doc: e.target.value, beneficiarioId: null });
+              }}
             />
+          </label>
+
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" type="button" onClick={buscarBeneficiario} disabled={benefLoading}>
+              <Search size={14} /> {benefLoading ? "Buscando..." : "Buscar"}
+            </Button>
+            <Button variant="outline" type="button" onClick={crearBeneficiario} disabled={benefLoading}>
+              <Plus size={14} /> Crear
+            </Button>
+          </div>
+
+          <label className="text-sm">
+            Nombres
+            <Input value={draft.respondente?.nombres || ""} onChange={(e) => setResp({ nombres: e.target.value })} />
+          </label>
+
+          <label className="text-sm">
+            Apellidos
+            <Input value={draft.respondente?.apellidos || ""} onChange={(e) => setResp({ apellidos: e.target.value })} />
           </label>
 
           <label className="text-sm">
             Nombre
-            <Input
-              value={draft.respondente?.nombre || ""}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  respondente: {
-                    ...(draft.respondente || {}),
-                    nombre: e.target.value,
-                  },
-                })
-              }
-            />
+            <Input value={draft.respondente?.nombre || ""} onChange={(e) => setResp({ nombre: e.target.value })} />
           </label>
         </div>
 
-        {/* --- Columna derecha: preguntas --- */}
+        {/* Preguntas */}
         <div className="min-w-0">
           {encuesta.preguntas.map((p, idx) => {
             const qid = p.id ?? p.tempId ?? `idx_${idx}`;
             return (
-              <div
-                key={qid}
-                className="rounded border border-[var(--subtle)] bg-white p-3 mb-2"
-              >
+              <div key={qid} className="rounded border border-[var(--subtle)] bg-white p-3 mb-2">
                 <div className="mb-1 text-sm font-medium">
                   P{idx + 1}. {p.texto}
                 </div>
@@ -969,4 +1100,3 @@ function RespuestaModal({
     </Modal>
   );
 }
-
