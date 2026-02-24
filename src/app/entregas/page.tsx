@@ -437,6 +437,31 @@ export default function EntregasPage() {
     setDraft(saved);
     setOpen(false);
     await reload();
+
+    if (saved.estado === "Entregado" && (saved.items?.length ?? 0) > 0) {
+      toast(
+        (t) => (
+          <div className="flex items-center gap-3">
+            <div className="text-sm">
+              Guardado ✅ <span className="text-slate-500">¿Deseas imprimir el comprobante?</span>
+            </div>
+            <button
+              onClick={() => {
+                toast.dismiss(t.id);
+                imprimir(saved);
+              }}
+              className="inline-flex items-center gap-2 rounded-md bg-[var(--brand)] px-3 py-1.5 text-xs text-white hover:opacity-90"
+              type="button"
+            >
+              <Printer size={14} /> Imprimir
+            </button>
+          </div>
+        ),
+        { duration: 6000 }
+      );
+    } else {
+      toast.success("Guardado ✅");
+    }
   };
 
   const cambiarEstado = async (row: Entrega, est: Estado) => {
@@ -446,6 +471,17 @@ export default function EntregasPage() {
   };
 
   const imprimir = (row: Entrega) => {
+
+    if (!row.items || row.items.length === 0) {
+      toast.error("No puedes imprimir: la entrega no tiene ítems.");
+      return;
+    }   
+
+    if (row.estado !== "Entregado") {
+      toast.error('Solo puedes imprimir cuando el estado sea "Entregado".');
+      return;
+    }
+    
     try {
       const html = renderComprobanteHtml(row);
 
@@ -631,7 +667,7 @@ export default function EntregasPage() {
         </Section>
       </div>
 
-      <EntregaModal open={open} setOpen={setOpen} draft={draft} setDraft={setDraft} onSave={guardar} />
+      <EntregaModal open={open} setOpen={setOpen} draft={draft} setDraft={setDraft} onSave={guardar} onPrint={imprimir} />
     </DashboardShell>
   );
 }
@@ -643,12 +679,14 @@ function EntregaModal({
   draft,
   setDraft,
   onSave,
+  onPrint,
 }: {
   open: boolean;
   setOpen: (v: boolean) => void;
   draft: Entrega | null;
   setDraft: (d: Entrega | null) => void;
   onSave: () => void;
+  onPrint: (row: Entrega) => void;
 }) {
   const [benefLoading, setBenefLoading] = useState(false);
 
@@ -736,9 +774,30 @@ function EntregaModal({
       wide
       actions={
         <>
-          <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
-          <Button onClick={onSave} disabled={!valid}><ClipboardCheck size={16} /> Guardar</Button>
-        </>
+          <Button variant="ghost" type="button" onClick={() => setOpen(false)}>
+            Cancelar
+          </Button>
+
+          <Button
+            variant="outline"
+            type="button"
+            onClick={() => draft && onPrint(draft)}
+            disabled={!draft || draft.estado !== "Entregado" || !draft.items?.length}
+            title={
+              !draft?.items?.length
+                ? "Agrega ítems para imprimir"
+                : draft?.estado !== "Entregado"
+                ? "Solo se imprime cuando esté en ENTREGADO"
+                : "Imprimir comprobante"
+            }
+          >
+              <Printer size={16} /> Imprimir
+            </Button>
+
+            <Button type="button" onClick={onSave} disabled={!valid}>
+              <ClipboardCheck size={16} /> Guardar
+            </Button>
+          </>
       }
     >
       <div className="grid gap-6 lg:grid-cols-3">
