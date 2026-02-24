@@ -1,9 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import DashboardShell from "../_components/DashboardShell";
-import { Wallet, Plus, FileDown, Pencil, Trash2, CheckCircle2, Building2, Calendar, X, BarChart3 } from "lucide-react";
+import {
+  Wallet,
+  Plus,
+  FileDown,
+  Pencil,
+  Trash2,
+  CheckCircle2,
+  Building2,
+  Calendar,
+  X,
+  BarChart3,
+} from "lucide-react";
 import toast from "react-hot-toast";
+import ActividadesManager from "@/components/costos/ActividadesManager";
 
 import {
   getActividades,
@@ -16,14 +28,21 @@ import {
   type Gasto,
 } from "@/lib/costos.api";
 
+import { createActividad, deleteActividad } from "@/lib/costos.api";
+
+import ConfirmModal from "@/components/ui/ConfirmModal";
+
 /* ============ Helpers UI ============ */
 function Button({
   children,
   variant = "solid",
   className = "",
   ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "solid" | "outline" | "ghost" }) {
-  const base = "inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm transition";
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: "solid" | "outline" | "ghost";
+}) {
+  const base =
+    "inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm transition";
   const styles =
     variant === "solid"
       ? "bg-[var(--brand)] text-white hover:opacity-90"
@@ -40,7 +59,9 @@ function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
-      className={`w-full rounded-md border border-[var(--subtle)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 ${props.className || ""}`}
+      className={`w-full rounded-md border border-[var(--subtle)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 ${
+        props.className || ""
+      }`}
     />
   );
 }
@@ -48,7 +69,9 @@ function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select
       {...props}
-      className={`w-full rounded-md border border-[var(--subtle)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 ${props.className || ""}`}
+      className={`w-full rounded-md border border-[var(--subtle)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 ${
+        props.className || ""
+      }`}
     />
   );
 }
@@ -56,11 +79,23 @@ function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
       {...props}
-      className={`w-full rounded-md border border-[var(--subtle)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 ${props.className || ""}`}
+      className={`w-full rounded-md border border-[var(--subtle)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 ${
+        props.className || ""
+      }`}
     />
   );
 }
-function Section({ title, icon, actions, children }: { title: string; icon: React.ReactNode; actions?: React.ReactNode; children: React.ReactNode }) {
+function Section({
+  title,
+  icon,
+  actions,
+  children,
+}: {
+  title: string;
+  icon: ReactNode;
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
   return (
     <div className="rounded-md border border-[var(--subtle)] bg-[var(--panel)]">
       <div className="flex items-center justify-between border-b border-[var(--subtle)] px-4 py-3">
@@ -75,27 +110,70 @@ function Section({ title, icon, actions, children }: { title: string; icon: Reac
   );
 }
 function Modal({
-  open, onClose, title, wide, actions, children,
-}: { open: boolean; onClose: () => void; title: string; wide?: boolean; actions?: React.ReactNode; children: React.ReactNode }) {
+  open,
+  onClose,
+  title,
+  actions,
+  wide,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  actions?: React.ReactNode;
+  wide?: boolean;
+  children: React.ReactNode;
+}) {
   if (!open) return null;
+
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className={`absolute left-1/2 top-1/2 ${wide ? "w-[min(980px,96vw)]" : "w-[min(680px,92vw)]"} -translate-x-1/2 -translate-y-1/2 rounded-lg border border-[var(--subtle)] bg-[var(--panel)] shadow-xl`}>
+
+      <div
+        className={[
+          "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
+          // ✅ más ancho (casi pantalla completa)
+          wide ? "w-[98vw] max-w-[1400px]" : "w-[96vw] max-w-[980px]",
+          // ✅ sin scroll interno
+          "rounded-lg border border-[var(--subtle)] bg-[var(--panel)] shadow-xl",
+        ].join(" ")}
+      >
         <div className="flex items-center justify-between border-b border-[var(--subtle)] px-4 py-3">
           <h4 className="text-sm font-semibold">{title}</h4>
-          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-slate-100"><X size={16} /></button>
+          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-slate-100">
+            <X size={16} />
+          </button>
         </div>
+
+        {/* ✅ SIN overflow-auto */}
         <div className="p-4">{children}</div>
-        <div className="flex items-center justify-end gap-2 border-t border-[var(--subtle)] px-4 py-3">{actions}</div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-[var(--subtle)] px-4 py-3">
+          {actions}
+        </div>
       </div>
     </div>
   );
 }
-const money = (n: number) =>
-  new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(n);
 
-const CATS = ["Personal", "Honorarios", "Transporte", "Insumos", "Alquiler", "Papelería", "Logística", "Otros"] as const;
+const money = (n: number) =>
+  new Intl.NumberFormat("es-CO", {
+    style: "currency",
+    currency: "COP",
+    maximumFractionDigits: 0,
+  }).format(n);
+
+const CATS = [
+  "Personal",
+  "Honorarios",
+  "Transporte",
+  "Insumos",
+  "Alquiler",
+  "Papelería",
+  "Logística",
+  "Otros",
+] as const;
 
 const hoy = new Date().toISOString().slice(0, 10);
 
@@ -107,9 +185,9 @@ export default function CostosPage() {
   const [rows, setRows] = useState<Gasto[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // filtros
+  // filtros (filtrado local)
   const [q, setQ] = useState("");
-  const [actId, setActId] = useState<string>(""); // string para el select
+  const [actId, setActId] = useState<string>("");
   const [cat, setCat] = useState<string>("");
   const [d1, setD1] = useState<string>("");
   const [d2, setD2] = useState<string>("");
@@ -119,8 +197,9 @@ export default function CostosPage() {
   const [draft, setDraft] = useState<(Omit<Gasto, "id"> & { id?: number }) | null>(null);
   const [originalValor, setOriginalValor] = useState<number>(0);
 
-  // modal presupuestos
-  const [openCfg, setOpenCfg] = useState(false);
+  // modales actividades
+  const [openCfg, setOpenCfg] = useState(false);     // presupuestos/estado
+  const [openActs, setOpenActs] = useState(false);   // crear/eliminar actividades
 
   const execByAct = useMemo(() => {
     const m: Record<number, number> = {};
@@ -137,13 +216,14 @@ export default function CostosPage() {
   }, [acts, rows]);
 
   const list = useMemo(() => {
+    const t = q.trim().toLowerCase();
     return rows.filter((r) => {
       const hitQ =
-        !q ||
+        !t ||
         [r.descripcion, r.proveedor || "", r.documento || "", r.categoria]
           .join(" ")
           .toLowerCase()
-          .includes(q.trim().toLowerCase());
+          .includes(t);
       const hitAct = !actId || String(r.actividadId) === actId;
       const hitCat = !cat || r.categoria === cat;
       const hitD1 = !d1 || r.fecha >= d1;
@@ -170,13 +250,15 @@ export default function CostosPage() {
 
   useEffect(() => {
     reloadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* ---- Acciones ---- */
   const nueva = () => {
     const firstAct = acts[0]?.id;
     if (!firstAct) {
-      toast.error("No hay actividades cargadas.");
+      toast.error("No hay actividades. Crea una actividad primero.");
+      setOpenActs(true);
       return;
     }
 
@@ -220,28 +302,41 @@ export default function CostosPage() {
     if (!payload.descripcion?.trim()) return toast.error("Descripción requerida");
     if (!payload.valor || payload.valor <= 0) return toast.error("Valor inválido");
 
-    let saved: any = null;
+    const t = toast.loading(draft.id ? "Actualizando..." : "Guardando...");
 
-    if (draft.id && draft.id > 0) {
-      saved = await updateGasto(draft.id, payload);
-    } else {
-      saved = await createGasto(payload);
+    try {
+      const saved =
+        draft.id && draft.id > 0
+          ? await updateGasto(draft.id, payload)
+          : await createGasto(payload);
+
+      if (!saved) return;
+      toast.success("Guardado ✅", { id: t });
+      setOpen(false);
+      await reloadAll();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Error guardando", { id: t });
     }
-
-    if (!saved) return;
-
-    setOpen(false);
-    await reloadAll();
   };
 
   const quitar = async (id: number) => {
     const ok = await deleteGasto(id);
     if (!ok) return;
+    toast.success("Eliminado ✅");
     await reloadAll();
   };
 
   const exportCSV = () => {
-    const head = ["fecha", "actividad", "categoria", "descripcion", "proveedor", "metodo", "documento", "valor"];
+    const head = [
+      "fecha",
+      "actividad",
+      "categoria",
+      "descripcion",
+      "proveedor",
+      "metodo",
+      "documento",
+      "valor",
+    ];
     const lines = list.map((r) => {
       const act = acts.find((a) => a.id === r.actividadId);
       return [
@@ -304,16 +399,24 @@ export default function CostosPage() {
           title="Actividades (presupuesto y estado)"
           icon={<BarChart3 size={18} />}
           actions={
-            <Button variant="outline" onClick={() => setOpenCfg(true)}>
-              <Pencil size={16} /> Definir/editar presupuestos
-            </Button>
+            <>
+              <Button variant="outline" type="button" onClick={() => setOpenActs(true)}>
+                <Plus size={16} /> Actividades
+              </Button>
+              <Button variant="outline" type="button" onClick={() => setOpenCfg(true)}>
+                <Pencil size={16} /> Presupuestos
+              </Button>
+            </>
           }
         >
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
             {acts.map((a) => {
               const gasto = execByAct[a.id] || 0;
               const disp = (a.presupuesto || 0) - gasto;
-              const pct = a.presupuesto ? Math.min(100, Math.round((gasto / a.presupuesto) * 100)) : 0;
+              const pct = a.presupuesto
+                ? Math.min(100, Math.round((gasto / a.presupuesto) * 100))
+                : 0;
+
               return (
                 <div key={a.id} className="rounded border border-[var(--subtle)] bg-white p-3">
                   <div className="flex items-center justify-between">
@@ -347,6 +450,11 @@ export default function CostosPage() {
                 </div>
               );
             })}
+            {!loading && acts.length === 0 && (
+              <div className="rounded border border-[var(--subtle)] bg-white p-4 text-sm text-slate-600">
+                Aún no hay actividades. Crea tus actividades con el botón <b>Actividades</b>.
+              </div>
+            )}
           </div>
         </Section>
 
@@ -359,9 +467,19 @@ export default function CostosPage() {
               <div className="items-center hidden gap-2 md:flex">
                 <div className="relative">
                   <Calendar className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
-                  <Input type="date" value={d1} onChange={(e) => setD1(e.target.value)} className="w-40 pl-8" />
+                  <Input
+                    type="date"
+                    value={d1}
+                    onChange={(e) => setD1(e.target.value)}
+                    className="w-40 pl-8"
+                  />
                 </div>
-                <Input type="date" value={d2} onChange={(e) => setD2(e.target.value)} className="w-40" />
+                <Input
+                  type="date"
+                  value={d2}
+                  onChange={(e) => setD2(e.target.value)}
+                  className="w-40"
+                />
                 <Select value={actId} onChange={(e) => setActId(e.target.value)} className="w-56">
                   <option value="">Actividad: Todas</option>
                   {acts.map((a) => (
@@ -373,15 +491,23 @@ export default function CostosPage() {
                 <Select value={cat} onChange={(e) => setCat(e.target.value)} className="w-44">
                   <option value="">Categoría: Todas</option>
                   {CATS.map((c) => (
-                    <option key={c} value={c}>{c}</option>
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
                   ))}
                 </Select>
-                <Input placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} className="w-64" />
+                <Input
+                  placeholder="Buscar…"
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  className="w-64"
+                />
               </div>
-              <Button variant="outline" onClick={exportCSV}>
+
+              <Button variant="outline" type="button" onClick={exportCSV}>
                 <FileDown size={16} /> Exportar
               </Button>
-              <Button onClick={nueva}>
+              <Button type="button" onClick={nueva}>
                 <Plus size={16} /> Nuevo gasto
               </Button>
             </>
@@ -404,7 +530,9 @@ export default function CostosPage() {
               <tbody>
                 {loading && (
                   <tr>
-                    <td colSpan={8} className="py-6 text-center text-slate-500">Cargando…</td>
+                    <td colSpan={8} className="py-6 text-center text-slate-500">
+                      Cargando…
+                    </td>
                   </tr>
                 )}
 
@@ -417,7 +545,9 @@ export default function CostosPage() {
                         <td className="px-3 py-2">
                           <div className="flex items-center gap-2">
                             <Building2 size={14} className="text-slate-400" />
-                            <span className="whitespace-nowrap">{a ? `${a.codigo} • ${a.nombre}` : "—"}</span>
+                            <span className="whitespace-nowrap">
+                              {a ? `${a.codigo} • ${a.nombre}` : "—"}
+                            </span>
                           </div>
                         </td>
                         <td className="px-3 py-2">{g.categoria}</td>
@@ -427,10 +557,10 @@ export default function CostosPage() {
                         <td className="px-3 py-2 font-medium text-right">{money(g.valor)}</td>
                         <td className="px-3 py-2">
                           <div className="flex items-center gap-2">
-                            <Button variant="outline" onClick={() => editar(g)}>
+                            <Button variant="outline" type="button" onClick={() => editar(g)}>
                               <Pencil size={14} /> Editar
                             </Button>
-                            <Button variant="ghost" onClick={() => quitar(g.id)}>
+                            <Button variant="ghost" type="button" onClick={() => quitar(g.id)}>
                               <Trash2 size={14} /> Quitar
                             </Button>
                           </div>
@@ -441,7 +571,9 @@ export default function CostosPage() {
 
                 {!loading && list.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="py-6 text-center text-slate-500">Sin resultados.</td>
+                    <td colSpan={8} className="py-6 text-center text-slate-500">
+                      Sin resultados.
+                    </td>
                   </tr>
                 )}
               </tbody>
@@ -450,7 +582,7 @@ export default function CostosPage() {
         </Section>
       </div>
 
-      {/* Modales */}
+      {/* Modal Gasto */}
       <GastoModal
         open={open}
         setOpen={setOpen}
@@ -462,12 +594,45 @@ export default function CostosPage() {
         onSave={guardar}
       />
 
+      {/* Modal Presupuestos */}
       <PresupuestoModal
         open={openCfg}
         setOpen={setOpenCfg}
         acts={acts}
-        setActs={setActs}
+        onSaved={async () => {
+          await reloadAll();
+        }}
       />
+
+      {/* Modal Actividades (crear/eliminar) */}
+      <Modal
+        open={openActs}
+        onClose={() => setOpenActs(false)}
+        title="Gestionar actividades"
+        wide={false}
+        actions={
+          <>
+            <Button variant="ghost" type="button" onClick={() => setOpenActs(false)}>
+              Cerrar
+            </Button>
+            <Button
+              type="button"
+              onClick={async () => {
+                await reloadAll();
+                setOpenActs(false);
+              }}
+            >
+              Listo
+            </Button>
+          </>
+        }
+      >
+        {/* props en any para no romper por tipado si tu componente difiere */}
+        <ActividadesManager {...({} as any)} />
+        <div className="mt-3 text-xs text-slate-500">
+          * Al cerrar este modal se recargan las actividades.
+        </div>
+      </Modal>
     </DashboardShell>
   );
 }
@@ -498,19 +663,33 @@ function GastoModal({
   const ejecutado = execByAct[Number(draft.actividadId)] || 0;
   const presupuesto = act?.presupuesto ?? 0;
 
-  // disponible estimado: ejecutado - original (si edición) + nuevo valor
   const ejecutadoSinEste = Math.max(0, ejecutado - (draft.id ? originalValor : 0));
   const disp = presupuesto - (ejecutadoSinEste + Number(draft.valor || 0));
-  const pct = presupuesto ? Math.max(0, Math.min(100, Math.round(((ejecutadoSinEste + Number(draft.valor || 0)) / presupuesto) * 100))) : 0;
+  const pct = presupuesto
+    ? Math.max(
+        0,
+        Math.min(100, Math.round(((ejecutadoSinEste + Number(draft.valor || 0)) / presupuesto) * 100))
+      )
+    : 0;
 
   const onAdj = (files: FileList | null) => {
     if (!files) return;
     const arr = Array.from(files).map((f) => ({ name: f.name, size: f.size }));
     setDraft({ ...draft, adjuntos: [...(draft.adjuntos || []), ...arr] });
   };
-  const rmAdj = (name: string) => setDraft({ ...draft, adjuntos: (draft.adjuntos || []).filter((a: any) => a.name !== name) });
 
-  const valid = !!draft.actividadId && !!draft.categoria && !!draft.fecha && Number(draft.valor) > 0 && String(draft.descripcion || "").trim();
+  const rmAdj = (name: string) =>
+    setDraft({
+      ...draft,
+      adjuntos: (draft.adjuntos || []).filter((a: any) => a.name !== name),
+    });
+
+  const valid =
+    !!draft.actividadId &&
+    !!draft.categoria &&
+    !!draft.fecha &&
+    Number(draft.valor) > 0 &&
+    String(draft.descripcion || "").trim();
 
   return (
     <Modal
@@ -520,8 +699,12 @@ function GastoModal({
       wide
       actions={
         <>
-          <Button variant="ghost" type="button" onClick={() => setOpen(false)}>Cancelar</Button>
-          <Button type="button" onClick={onSave} disabled={!valid}><CheckCircle2 size={16} /> Guardar</Button>
+          <Button variant="ghost" type="button" onClick={() => setOpen(false)}>
+            Cancelar
+          </Button>
+          <Button type="button" onClick={onSave} disabled={!valid}>
+            <CheckCircle2 size={16} /> Guardar
+          </Button>
         </>
       }
     >
@@ -544,7 +727,11 @@ function GastoModal({
           <label className="grid gap-1 text-sm">
             <span className="text-slate-700">Categoría</span>
             <Select value={String(draft.categoria)} onChange={(e) => setDraft({ ...draft, categoria: e.target.value })}>
-              {CATS.map((c) => <option key={c} value={c}>{c}</option>)}
+              {CATS.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
             </Select>
           </label>
 
@@ -555,12 +742,21 @@ function GastoModal({
 
           <label className="grid gap-1 text-sm">
             <span className="text-slate-700">Valor</span>
-            <Input type="number" min={0} value={Number(draft.valor || 0)} onChange={(e) => setDraft({ ...draft, valor: Number(e.target.value) })} />
+            <Input
+              type="number"
+              min={0}
+              value={Number(draft.valor || 0)}
+              onChange={(e) => setDraft({ ...draft, valor: Number(e.target.value) })}
+            />
           </label>
 
           <label className="grid gap-1 text-sm md:col-span-2">
             <span className="text-slate-700">Descripción</span>
-            <Textarea rows={3} value={String(draft.descripcion || "")} onChange={(e) => setDraft({ ...draft, descripcion: e.target.value })} />
+            <Textarea
+              rows={3}
+              value={String(draft.descripcion || "")}
+              onChange={(e) => setDraft({ ...draft, descripcion: e.target.value })}
+            />
           </label>
 
           <label className="grid gap-1 text-sm">
@@ -571,7 +767,11 @@ function GastoModal({
           <label className="grid gap-1 text-sm">
             <span className="text-slate-700">Método de pago</span>
             <Select value={String(draft.metodo || "Transferencia")} onChange={(e) => setDraft({ ...draft, metodo: e.target.value })}>
-              {["Efectivo", "Transferencia", "Cheque", "Otro"].map((m) => <option key={m} value={m}>{m}</option>)}
+              {["Efectivo", "Transferencia", "Cheque", "Otro"].map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
             </Select>
           </label>
 
@@ -599,7 +799,9 @@ function GastoModal({
                         <td className="px-2 py-2">{a.name}</td>
                         <td className="px-2 py-2">{(a.size / 1024).toFixed(1)} KB</td>
                         <td className="px-2 py-2">
-                          <Button variant="ghost" type="button" onClick={() => rmAdj(a.name)}><Trash2 size={14} /> Quitar</Button>
+                          <Button variant="ghost" type="button" onClick={() => rmAdj(a.name)}>
+                            <Trash2 size={14} /> Quitar
+                          </Button>
                         </td>
                       </tr>
                     ))}
@@ -613,10 +815,18 @@ function GastoModal({
         <div className="grid gap-3">
           <div className="rounded border border-[var(--subtle)] bg-white p-3">
             <div className="mb-1 text-sm font-semibold">Resumen de actividad</div>
-            <div className="text-xs text-slate-600">Actividad: <b>{act ? `${act.codigo} • ${act.nombre}` : "—"}</b></div>
-            <div className="text-xs text-slate-600">Presupuesto: <b>{money(presupuesto)}</b></div>
-            <div className="text-xs text-slate-600">Ejecutado (estimado): <b>{money(ejecutadoSinEste + Number(draft.valor || 0))}</b></div>
-            <div className="text-xs text-slate-600">Disponible estimado: <b>{money(disp)}</b></div>
+            <div className="text-xs text-slate-600">
+              Actividad: <b>{act ? `${act.codigo} • ${act.nombre}` : "—"}</b>
+            </div>
+            <div className="text-xs text-slate-600">
+              Presupuesto: <b>{money(presupuesto)}</b>
+            </div>
+            <div className="text-xs text-slate-600">
+              Ejecutado (estimado): <b>{money(ejecutadoSinEste + Number(draft.valor || 0))}</b>
+            </div>
+            <div className="text-xs text-slate-600">
+              Disponible estimado: <b>{money(disp)}</b>
+            </div>
             <div className="h-2 mt-2 overflow-hidden rounded bg-slate-100">
               <div className="h-full bg-[var(--brand)]" style={{ width: `${pct}%` }} />
             </div>
@@ -629,84 +839,244 @@ function GastoModal({
 
 /* ============ Modal de Presupuestos ============ */
 function PresupuestoModal({
-  open, setOpen, acts, setActs,
+  open,
+  setOpen,
+  acts,
+  setActs,
 }: {
   open: boolean;
   setOpen: (v: boolean) => void;
   acts: Actividad[];
   setActs: (f: any) => void;
 }) {
-  if (!open) return null;
+  const [local, setLocal] = useState<Actividad[]>([]);
+  const [newCodigo, setNewCodigo] = useState("");
+  const [newNombre, setNewNombre] = useState("");
+  const [newPres, setNewPres] = useState<number>(0);
 
-  const [local, setLocal] = useState<Actividad[]>(JSON.parse(JSON.stringify(acts)));
+  // ✅ confirm modal state
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const [toDelete, setToDelete] = useState<Actividad | null>(null);
 
   useEffect(() => {
-    setLocal(JSON.parse(JSON.stringify(acts)));
-  }, [acts]);
+    if (open) setLocal(JSON.parse(JSON.stringify(acts ?? [])));
+  }, [acts, open]);
 
   const setAct = (i: number, patch: Partial<Actividad>) => {
-    const arr = [...local];
-    arr[i] = { ...arr[i], ...patch };
-    setLocal(arr);
+    setLocal((prev) => {
+      const arr = [...prev];
+      arr[i] = { ...arr[i], ...patch };
+      return arr;
+    });
   };
 
   const save = async () => {
     try {
-      const items = local.map((a) => ({ id: a.id, presupuesto: a.presupuesto, estado: a.estado, nombre: a.nombre }));
+      const items = local.map((a) => ({
+        id: a.id,
+        presupuesto: a.presupuesto,
+        estado: a.estado,
+        nombre: a.nombre,
+      }));
       await patchActividades(items as any);
       setActs(local);
-      toast.success("Presupuestos guardados ✅");
+      toast.success("Actividades guardadas ✅");
       setOpen(false);
     } catch (e: any) {
-      toast.error(e?.message ?? "Error guardando presupuestos");
+      toast.error(e?.message ?? "Error guardando actividades");
     }
   };
 
+  const crear = async () => {
+    const codigo = newCodigo.trim().toUpperCase();
+    const nombre = newNombre.trim();
+    if (!codigo) return toast.error("Código requerido");
+    if (!nombre) return toast.error("Nombre requerido");
+
+    try {
+      const created = await createActividad({
+        codigo,
+        nombre,
+        presupuesto: Number(newPres || 0),
+        estado: "Abierta",
+      });
+
+      toast.success("Actividad creada ✅");
+      setLocal((prev) =>
+        [...prev, created].sort((a, b) => a.codigo.localeCompare(b.codigo))
+      );
+      setActs((prev: Actividad[]) =>
+        [...prev, created].sort((a, b) => a.codigo.localeCompare(b.codigo))
+      );
+
+      setNewCodigo("");
+      setNewNombre("");
+      setNewPres(0);
+    } catch (e: any) {
+      toast.error(e?.message ?? "No se pudo crear");
+    }
+  };
+
+  // ✅ ahora solo abre el modal (NO confirm nativo)
+  const pedirEliminar = (a: Actividad) => {
+    setToDelete(a);
+    setConfirmOpen(true);
+  };
+
+  // ✅ aquí se elimina de verdad
+  const confirmarEliminar = async () => {
+    if (!toDelete) return;
+    try {
+      setConfirmLoading(true);
+      await deleteActividad(toDelete.id);
+
+      toast.success("Actividad eliminada ✅");
+      setLocal((prev) => prev.filter((x) => x.id !== toDelete.id));
+      setActs((prev: Actividad[]) => prev.filter((x) => x.id !== toDelete.id));
+
+      setConfirmOpen(false);
+      setToDelete(null);
+    } catch (e: any) {
+      toast.error(e?.message ?? "No se pudo eliminar");
+    } finally {
+      setConfirmLoading(false);
+    }
+  };
+
+  if (!open) return null;
+
   return (
-    <Modal
-      open={open}
-      onClose={() => setOpen(false)}
-      title="Definir/editar presupuestos por actividad"
-      actions={<Button type="button" onClick={save}>Guardar cambios</Button>}
-      wide
-    >
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="border-b border-[var(--subtle)] text-slate-500">
-            <tr>
-              <th className="px-3 py-2 text-left">Código</th>
-              <th className="px-3 py-2 text-left">Actividad</th>
-              <th className="px-3 py-2 text-right">Presupuesto</th>
-              <th className="px-3 py-2 text-left">Estado</th>
-            </tr>
-          </thead>
-          <tbody>
-            {local.map((a, i) => (
-              <tr key={a.id} className="border-b border-[var(--subtle)]/70">
-                <td className="px-3 py-2">{a.codigo}</td>
-                <td className="px-3 py-2">
-                  <Input value={a.nombre} onChange={(e) => setAct(i, { nombre: e.target.value })} />
-                </td>
-                <td className="px-3 py-2 text-right">
-                  <Input
-                    type="number"
-                    min={0}
-                    value={a.presupuesto}
-                    onChange={(e) => setAct(i, { presupuesto: Number(e.target.value) })}
-                    className="text-right w-36"
-                  />
-                </td>
-                <td className="px-3 py-2">
-                  <Select value={a.estado} onChange={(e) => setAct(i, { estado: e.target.value as any })}>
-                    <option value="Abierta">Abierta</option>
-                    <option value="Cerrada">Cerrada</option>
-                  </Select>
-                </td>
+    <>
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Actividades (crear / editar / eliminar)"
+        actions={
+          <>
+            <Button variant="ghost" type="button" onClick={() => setOpen(false)}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={save}>
+              Guardar cambios
+            </Button>
+          </>
+        }
+        wide
+      >
+        {/* Crear */}
+        <div className="mb-4 rounded border border-[var(--subtle)] bg-white p-3">
+          <div className="mb-2 text-sm font-semibold">Crear actividad</div>
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
+            <Input
+              placeholder="Código (A1)"
+              value={newCodigo}
+              onChange={(e) => setNewCodigo(e.target.value)}
+            />
+            <Input
+              placeholder="Nombre"
+              value={newNombre}
+              onChange={(e) => setNewNombre(e.target.value)}
+            />
+            <Input
+              type="number"
+              min={0}
+              placeholder="Presupuesto"
+              value={newPres}
+              onChange={(e) => setNewPres(Number(e.target.value))}
+            />
+            <Button type="button" onClick={crear}>
+              <Plus size={16} /> Crear
+            </Button>
+          </div>
+          <div className="mt-2 text-xs text-slate-500">
+            * Si una actividad ya tiene gastos asociados, la API no permitirá eliminarla.
+          </div>
+        </div>
+
+        {/* Tabla */}
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="border-b border-[var(--subtle)] text-slate-500">
+              <tr>
+                <th className="px-3 py-2 text-left">Código</th>
+                <th className="px-3 py-2 text-left">Actividad</th>
+                <th className="px-3 py-2 text-right">Presupuesto</th>
+                <th className="px-3 py-2 text-left">Estado</th>
+                <th className="px-3 py-2 text-left w-44">Acciones</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Modal>
+            </thead>
+            <tbody>
+              {local.map((a, i) => (
+                <tr key={a.id} className="border-b border-[var(--subtle)]/70">
+                  <td className="px-3 py-2">{a.codigo}</td>
+                  <td className="px-3 py-2">
+                    <Input
+                      value={a.nombre}
+                      onChange={(e) => setAct(i, { nombre: e.target.value })}
+                    />
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <Input
+                      type="number"
+                      min={0}
+                      value={a.presupuesto}
+                      onChange={(e) => setAct(i, { presupuesto: Number(e.target.value) })}
+                      className="text-right w-36"
+                    />
+                  </td>
+                  <td className="px-3 py-2">
+                    <Select
+                      value={a.estado}
+                      onChange={(e) => setAct(i, { estado: e.target.value as any })}
+                    >
+                      <option value="Abierta">Abierta</option>
+                      <option value="Cerrada">Cerrada</option>
+                    </Select>
+                  </td>
+                  <td className="px-3 py-2">
+                    <Button
+                      variant="ghost"
+                      type="button"
+                      onClick={() => pedirEliminar(a)}
+                      className="text-rose-700 hover:text-rose-800"
+                    >
+                      <Trash2 size={14} /> Eliminar
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+              {local.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-6 text-center text-slate-500">
+                    No hay actividades.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Modal>
+
+      {/* ✅ ConfirmModal real (ya no sale el del navegador) */}
+      <ConfirmModal
+        open={confirmOpen}
+        title="Eliminar actividad"
+        message={
+          toDelete
+            ? `¿Eliminar la actividad ${toDelete.codigo} • ${toDelete.nombre}?`
+            : "¿Eliminar actividad?"
+        }
+        confirmText="Sí, eliminar"
+        cancelText="Cancelar"
+        loading={confirmLoading}
+        onClose={() => {
+          if (confirmLoading) return;
+          setConfirmOpen(false);
+          setToDelete(null);
+        }}
+        onConfirm={confirmarEliminar}
+      />
+    </>
   );
 }
