@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client"; // ✅ necesario para Prisma.sql / join
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /* =================== Mapas UI <-> Prisma =================== */
 const tipoToDb: Record<string, "ADMINISTRATIVO" | "ASISTENCIAL"> = {
-  "Administrativo": "ADMINISTRATIVO",
-  "Asistencial": "ASISTENCIAL",
+  Administrativo: "ADMINISTRATIVO",
+  Asistencial: "ASISTENCIAL",
   ADMINISTRATIVO: "ADMINISTRATIVO",
   ASISTENCIAL: "ASISTENCIAL",
 };
@@ -17,10 +18,10 @@ const estadoToDb: Record<
   "EN_EVALUACION" | "APROBADA" | "RECHAZADA" | "CONTRATO_GENERADO" | "FIRMADO"
 > = {
   "En evaluación": "EN_EVALUACION",
-  "Aprobada": "APROBADA",
-  "Rechazada": "RECHAZADA",
+  Aprobada: "APROBADA",
+  Rechazada: "RECHAZADA",
   "Contrato generado": "CONTRATO_GENERADO",
-  "Firmado": "FIRMADO",
+  Firmado: "FIRMADO",
   EN_EVALUACION: "EN_EVALUACION",
   APROBADA: "APROBADA",
   RECHAZADA: "RECHAZADA",
@@ -30,8 +31,8 @@ const estadoToDb: Record<
 
 const modalidadToDb: Record<string, "PRESTACION_SERVICIOS" | "TEMPORAL" | "INDEFINIDO"> = {
   "Prestación de servicios": "PRESTACION_SERVICIOS",
-  "Temporal": "TEMPORAL",
-  "Indefinido": "INDEFINIDO",
+  Temporal: "TEMPORAL",
+  Indefinido: "INDEFINIDO",
   PRESTACION_SERVICIOS: "PRESTACION_SERVICIOS",
   TEMPORAL: "TEMPORAL",
   INDEFINIDO: "INDEFINIDO",
@@ -47,21 +48,22 @@ const jornadaToDb: Record<string, "TIEMPO_COMPLETO" | "MEDIO_TIEMPO" | "POR_HORA
 };
 
 const salarioTipoToDb: Record<string, "SALARIO" | "HONORARIOS"> = {
-  "Salario": "SALARIO",
-  "Honorarios": "HONORARIOS",
+  Salario: "SALARIO",
+  Honorarios: "HONORARIOS",
   SALARIO: "SALARIO",
   HONORARIOS: "HONORARIOS",
 };
 
 const periodoToDb: Record<string, "MENSUAL" | "QUINCENAL" | "POR_SERVICIO"> = {
-  "Mensual": "MENSUAL",
-  "Quincenal": "QUINCENAL",
+  Mensual: "MENSUAL",
+  Quincenal: "QUINCENAL",
   "Por servicio": "POR_SERVICIO",
   MENSUAL: "MENSUAL",
   QUINCENAL: "QUINCENAL",
   POR_SERVICIO: "POR_SERVICIO",
 };
 
+/* =================== Mapas DB -> UI =================== */
 const tipoToUi: Record<string, "Administrativo" | "Asistencial"> = {
   ADMINISTRATIVO: "Administrativo",
   ASISTENCIAL: "Asistencial",
@@ -101,7 +103,9 @@ const periodoToUi: Record<string, "Mensual" | "Quincenal" | "Por servicio"> = {
   POR_SERVICIO: "Por servicio",
 };
 
+/* =================== Helpers =================== */
 const toISO = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : "");
+
 const toDateOrNull = (s: any) => {
   if (s === null || typeof s === "undefined" || String(s).trim() === "") return null;
   const d = new Date(String(s));
@@ -153,7 +157,7 @@ function toUi(row: any) {
   };
 }
 
-/* =================== GET /api/inscripciones =================== */
+/* =================== GET /api/inscripciones (con búsqueda JSON) =================== */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
 
@@ -164,37 +168,72 @@ export async function GET(req: NextRequest) {
   const page = Math.max(1, Number(searchParams.get("page") ?? 1));
   const pageSize = Math.max(1, Math.min(200, Number(searchParams.get("pageSize") ?? 50)));
   const skip = (page - 1) * pageSize;
+  const take = pageSize;
 
-  const where: any = {};
+  const estDb = (estadoToDb as any)[estado];
+  const tipoDb = (tipoToDb as any)[tipo];
 
-  const estDb = estadoToDb[estado];
-  if (estDb) where.estado = estDb;
+  const filters: Prisma.Sql[] = [];
 
-  const tipoDb = tipoToDb[tipo];
-  if (tipoDb) where.tipo = tipoDb;
+  if (estDb) filters.push(Prisma.sql`i."estado" = ${estDb}`);
+  if (tipoDb) filters.push(Prisma.sql`i."tipo" = ${tipoDb}`);
 
   if (q) {
-    where.OR = [
-      { radicado: { contains: q, mode: "insensitive" } },
-      { cargo: { contains: q, mode: "insensitive" } },
-      { actividad: { contains: q, mode: "insensitive" } },
-      // Buscar en JSON (candidato) lo dejamos para más adelante si lo necesitas (es más delicado).
-    ];
+    const like = `%${q}%`;
+    filters.push(Prisma.sql`
+      (
+        i."radicado" ILIKE ${like}
+        OR i."cargo" ILIKE ${like}
+        OR i."actividad" ILIKE ${like}
+        OR COALESCE(i."candidato"->>'doc','') ILIKE ${like}
+        OR COALESCE(i."candidato"->>'nombres','') ILIKE ${like}
+        OR COALESCE(i."candidato"->>'apellidos','') ILIKE ${like}
+      )
+    `);
   }
 
-  const [total, items] = await Promise.all([
-    prisma.inscripcion.count({ where }),
-    prisma.inscripcion.findMany({
-      where,
-      orderBy: [{ fecha: "desc" }, { radicado: "desc" }],
-      include: { contrato: true },
-      skip,
-      take: pageSize,
-    }),
-  ]);
+  // ✅ AQUÍ está el fix: no envolver join en Prisma.sql`${...}`
+  const whereSql: Prisma.Sql =
+    filters.length > 0 ? Prisma.join(filters, Prisma.sql` AND `) : Prisma.sql`1=1`;
+
+  // 1) total
+  const totalRows = await prisma.$queryRaw<{ total: bigint }[]>(
+    Prisma.sql`SELECT COUNT(*)::bigint AS total FROM "Inscripcion" i WHERE ${whereSql}`
+  );
+  const total = Number(totalRows?.[0]?.total ?? 0);
+
+  // 2) ids paginados
+  const idRows = await prisma.$queryRaw<{ id: number }[]>(
+    Prisma.sql`
+      SELECT i."id" AS id
+      FROM "Inscripcion" i
+      WHERE ${whereSql}
+      ORDER BY i."fecha" DESC, i."radicado" DESC
+      OFFSET ${skip} LIMIT ${take}
+    `
+  );
+
+  const ids = idRows.map((r) => r.id);
+
+  if (ids.length === 0) {
+    return NextResponse.json(
+      { total, page, pageSize, items: [] },
+      { headers: { "cache-control": "no-store" } }
+    );
+  }
+
+  // 3) traer registros completos + contrato
+  const items = await prisma.inscripcion.findMany({
+    where: { id: { in: ids } },
+    include: { contrato: true },
+  });
+
+  // 4) reordenar como el SQL
+  const byId = new Map(items.map((x) => [x.id, x]));
+  const ordered = ids.map((id) => byId.get(id)).filter(Boolean) as any[];
 
   return NextResponse.json(
-    { total, page, pageSize, items: items.map(toUi) },
+    { total, page, pageSize, items: ordered.map(toUi) },
     { headers: { "cache-control": "no-store" } }
   );
 }
@@ -238,7 +277,6 @@ export async function POST(req: NextRequest) {
         evaluacion: evaluacion as any,
         adjuntos: adjuntos as any,
 
-        // contrato opcional (si viene)
         ...(contratoUi
           ? {
               contrato: {
@@ -259,10 +297,12 @@ export async function POST(req: NextRequest) {
       include: { contrato: true },
     });
 
-    return NextResponse.json(toUi(created), { status: 201, headers: { "cache-control": "no-store" } });
+    return NextResponse.json(toUi(created), {
+      status: 201,
+      headers: { "cache-control": "no-store" },
+    });
   } catch (e: any) {
     console.error("POST /api/inscripciones error:", e);
-    // único por radicado
     if (e?.code === "P2002") {
       return NextResponse.json({ error: "Ya existe una inscripción con ese radicado." }, { status: 409 });
     }

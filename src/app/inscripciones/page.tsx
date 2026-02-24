@@ -231,10 +231,32 @@ export default function InscripcionesPage() {
   const [draft, setDraft] = useState<Inscripcion | null>(null);
   const [step, setStep] = useState(1);
 
-  const reload = async () => {
-    const res = await getInscripciones({ page: 1, pageSize: 200 });
-    setRows(res.items || []);
+  const [openDelete, setOpenDelete] = useState(false);
+  const [targetDelete, setTargetDelete] = useState<Inscripcion | null>(null);
+
+  const reload = async (qOverride?: string) => {
+    setLoading(true);
+    try {
+      const res = await getInscripciones({
+        q: qOverride ?? q,
+        estado: fEstado,
+        tipo: fTipo,
+        page: 1,
+        pageSize: 200,
+      });
+      setRows(res.items || []);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  useEffect(() => {
+  const t = setTimeout(() => {
+    reload();
+  }, 300);
+  return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [q]);
 
   useEffect(() => {
     reload().catch(() => toast.error("No se pudo cargar inscripciones"));
@@ -294,41 +316,56 @@ export default function InscripcionesPage() {
   const guardar = async () => {
     if (!draft) return;
 
-    // Validación mínima (igual que Step1)
+    // Validación mínima
     if (!draft.candidato.doc || !draft.candidato.nombres || !draft.candidato.apellidos || !draft.cargo) {
       toast.error("Faltan datos obligatorios del candidato.");
       return;
     }
 
-    try {
-      const payload: any = {
-        fecha: draft.fecha,
-        tipo: draft.tipo,
-        candidato: draft.candidato,
-        cargo: draft.cargo,
-        actividad: draft.actividad,
-        estado: draft.estado,
-        evaluacion: draft.evaluacion,
-        contrato: draft.contrato ?? undefined,
-        adjuntos: draft.adjuntos ?? [],
-      };
+    const payload: any = {
+      fecha: draft.fecha,
+      tipo: draft.tipo,
+      candidato: draft.candidato,
+      cargo: draft.cargo,
+      actividad: draft.actividad,
+      estado: draft.estado,
+      evaluacion: draft.evaluacion,
+      contrato: draft.contrato ?? undefined,
+      adjuntos: draft.adjuntos ?? [],
+    };
 
-      const saved =
-        draft.id && draft.id > 0
-          ? await updateInscripcion(draft.id, payload)
-          : await createInscripcion(payload);
+    const saved =
+      draft.id && draft.id > 0
+        ? await updateInscripcion(draft.id, payload)
+        : await createInscripcion(payload);
 
-      if (!saved) return;
+    if (!saved) return;
 
-      toast.success("Guardado ✅");
-      setOpen(false);
-      setDraft(null);
-      await reload();
-    } catch (e: any) {
-      toast.error(e?.message ?? "Error guardando");
-    }
+    toast.success("Guardado ✅");
+
+    // ✅ clave: actualizar el draft con lo que devolvió la BD (id y radicado)
+    setDraft(saved);
+
+    // refrescar tabla
+    await reload();
   };
-  
+
+  const confirmDelete = (r: Inscripcion) => {
+  setTargetDelete(r);
+  setOpenDelete(true);
+};
+
+const doDelete = async () => {
+  if (!targetDelete?.id) return;
+  const ok = await deleteInscripcion(targetDelete.id);
+  if (ok) {
+    toast.success("Inscripción eliminada ✅");
+    await reload();
+  }
+  setOpenDelete(false);
+  setTargetDelete(null);
+};
+    
   const generarContrato = async () => {
     if (!draft) return;
 
@@ -490,10 +527,7 @@ export default function InscripcionesPage() {
                             </Button>
                           )}
 
-                          <Button variant="ghost" onClick={async () => {
-                            const ok = await deleteInscripcion(r.id);
-                            if (ok) await reload();
-                          }}>
+                          <Button variant="ghost" onClick={() => confirmDelete(r)}>
                             <Trash2 size={14} /> Quitar
                           </Button>
                         </div>
@@ -525,6 +559,36 @@ export default function InscripcionesPage() {
         onSave={guardar}
         onGenerate={generarContrato}
       />
+      <Modal
+        open={openDelete}
+        onClose={() => setOpenDelete(false)}
+        title="Confirmar eliminación"
+        actions={
+          <>
+            <Button variant="ghost" onClick={() => setOpenDelete(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={doDelete}
+              className="text-white bg-rose-600 hover:bg-rose-700"
+            >
+              <Trash2 size={16} /> Eliminar
+            </Button>
+          </>
+        }
+      >
+        <div className="text-sm text-slate-700">
+          ¿Seguro que deseas eliminar la inscripción{" "}
+          <b>{targetDelete?.radicado || "(sin radicado)"}</b> de{" "}
+          <b>
+            {targetDelete
+              ? `${targetDelete.candidato?.nombres || ""} ${targetDelete.candidato?.apellidos || ""}`.trim()
+              : ""}
+          </b>
+          ?<br />
+          Esta acción no se puede deshacer.
+        </div>
+      </Modal>
     </DashboardShell>
   );
 }
@@ -604,7 +668,12 @@ function WizardModal({
           )}
           {step === 4 && (
             <>
-              <Button variant="outline" onClick={onSave}>
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  await onSave();
+                }}
+              >
                 <FileDown size={16} /> Guardar
               </Button>
               <Button onClick={onGenerate} disabled={!canGen}>
