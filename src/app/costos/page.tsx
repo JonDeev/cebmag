@@ -15,7 +15,6 @@ import {
   BarChart3,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import ActividadesManager from "@/components/costos/ActividadesManager";
 
 import {
   getActividades,
@@ -24,11 +23,11 @@ import {
   createGasto,
   updateGasto,
   deleteGasto,
+  createActividad,
+  deleteActividad,
   type Actividad,
   type Gasto,
 } from "@/lib/costos.api";
-
-import { createActividad, deleteActividad } from "@/lib/costos.api";
 
 import ConfirmModal from "@/components/ui/ConfirmModal";
 
@@ -41,8 +40,7 @@ function Button({
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "solid" | "outline" | "ghost";
 }) {
-  const base =
-    "inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm transition";
+  const base = "inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm transition";
   const styles =
     variant === "solid"
       ? "bg-[var(--brand)] text-white hover:opacity-90"
@@ -109,6 +107,7 @@ function Section({
     </div>
   );
 }
+
 function Modal({
   open,
   onClose,
@@ -129,27 +128,25 @@ function Modal({
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-
       <div
         className={[
           "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
-          // ✅ más ancho (casi pantalla completa)
           wide ? "w-[98vw] max-w-[1400px]" : "w-[96vw] max-w-[980px]",
-          // ✅ sin scroll interno
-          "rounded-lg border border-[var(--subtle)] bg-[var(--panel)] shadow-xl",
+          "max-h-[92vh] overflow-hidden rounded-lg border border-[var(--subtle)] bg-[var(--panel)] shadow-xl",
+          "flex flex-col",
         ].join(" ")}
       >
-        <div className="flex items-center justify-between border-b border-[var(--subtle)] px-4 py-3">
+        <div className="flex items-center justify-between border-b border-[var(--subtle)] px-4 py-3 shrink-0">
           <h4 className="text-sm font-semibold">{title}</h4>
           <button type="button" onClick={onClose} className="p-1 rounded hover:bg-slate-100">
             <X size={16} />
           </button>
         </div>
 
-        {/* ✅ SIN overflow-auto */}
-        <div className="p-4">{children}</div>
+        {/* contenido con scroll vertical SOLO si se necesita */}
+        <div className="p-4 overflow-y-auto grow">{children}</div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-[var(--subtle)] px-4 py-3">
+        <div className="flex items-center justify-end gap-2 border-t border-[var(--subtle)] px-4 py-3 shrink-0">
           {actions}
         </div>
       </div>
@@ -158,22 +155,9 @@ function Modal({
 }
 
 const money = (n: number) =>
-  new Intl.NumberFormat("es-CO", {
-    style: "currency",
-    currency: "COP",
-    maximumFractionDigits: 0,
-  }).format(n);
+  new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(n);
 
-const CATS = [
-  "Personal",
-  "Honorarios",
-  "Transporte",
-  "Insumos",
-  "Alquiler",
-  "Papelería",
-  "Logística",
-  "Otros",
-] as const;
+const CATS = ["Personal", "Honorarios", "Transporte", "Insumos", "Alquiler", "Papelería", "Logística", "Otros"] as const;
 
 const hoy = new Date().toISOString().slice(0, 10);
 
@@ -185,7 +169,7 @@ export default function CostosPage() {
   const [rows, setRows] = useState<Gasto[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // filtros (filtrado local)
+  // filtros
   const [q, setQ] = useState("");
   const [actId, setActId] = useState<string>("");
   const [cat, setCat] = useState<string>("");
@@ -193,13 +177,12 @@ export default function CostosPage() {
   const [d2, setD2] = useState<string>("");
 
   // modal gasto
-  const [open, setOpen] = useState(false);
+  const [openGasto, setOpenGasto] = useState(false);
   const [draft, setDraft] = useState<(Omit<Gasto, "id"> & { id?: number }) | null>(null);
   const [originalValor, setOriginalValor] = useState<number>(0);
 
-  // modales actividades
-  const [openCfg, setOpenCfg] = useState(false);     // presupuestos/estado
-  const [openActs, setOpenActs] = useState(false);   // crear/eliminar actividades
+  // modal actividades
+  const [openActs, setOpenActs] = useState(false);
 
   const execByAct = useMemo(() => {
     const m: Record<number, number> = {};
@@ -220,10 +203,7 @@ export default function CostosPage() {
     return rows.filter((r) => {
       const hitQ =
         !t ||
-        [r.descripcion, r.proveedor || "", r.documento || "", r.categoria]
-          .join(" ")
-          .toLowerCase()
-          .includes(t);
+        [r.descripcion, r.proveedor || "", r.documento || "", r.categoria].join(" ").toLowerCase().includes(t);
       const hitAct = !actId || String(r.actividadId) === actId;
       const hitCat = !cat || r.categoria === cat;
       const hitD1 = !d1 || r.fecha >= d1;
@@ -253,7 +233,6 @@ export default function CostosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ---- Acciones ---- */
   const nueva = () => {
     const firstAct = acts[0]?.id;
     if (!firstAct) {
@@ -274,13 +253,13 @@ export default function CostosPage() {
       valor: 0,
       adjuntos: [],
     });
-    setOpen(true);
+    setOpenGasto(true);
   };
 
   const editar = (g: Gasto) => {
     setOriginalValor(g.valor);
     setDraft({ ...g });
-    setOpen(true);
+    setOpenGasto(true);
   };
 
   const guardar = async () => {
@@ -303,16 +282,17 @@ export default function CostosPage() {
     if (!payload.valor || payload.valor <= 0) return toast.error("Valor inválido");
 
     const t = toast.loading(draft.id ? "Actualizando..." : "Guardando...");
-
     try {
       const saved =
-        draft.id && draft.id > 0
-          ? await updateGasto(draft.id, payload)
-          : await createGasto(payload);
+        draft.id && draft.id > 0 ? await updateGasto(draft.id, payload) : await createGasto(payload);
 
-      if (!saved) return;
+      if (!saved) {
+        toast.dismiss(t);
+        return;
+      }
+
       toast.success("Guardado ✅", { id: t });
-      setOpen(false);
+      setOpenGasto(false);
       await reloadAll();
     } catch (e: any) {
       toast.error(e?.message ?? "Error guardando", { id: t });
@@ -320,23 +300,22 @@ export default function CostosPage() {
   };
 
   const quitar = async (id: number) => {
-    const ok = await deleteGasto(id);
-    if (!ok) return;
-    toast.success("Eliminado ✅");
-    await reloadAll();
+    const t = toast.loading("Eliminando...");
+    try {
+      const ok = await deleteGasto(id);
+      if (!ok) {
+        toast.dismiss(t);
+        return;
+      }
+      toast.success("Eliminado ✅", { id: t });
+      await reloadAll();
+    } catch (e: any) {
+      toast.error(e?.message ?? "No se pudo eliminar", { id: t });
+    }
   };
 
   const exportCSV = () => {
-    const head = [
-      "fecha",
-      "actividad",
-      "categoria",
-      "descripcion",
-      "proveedor",
-      "metodo",
-      "documento",
-      "valor",
-    ];
+    const head = ["fecha", "actividad", "categoria", "descripcion", "proveedor", "metodo", "documento", "valor"];
     const lines = list.map((r) => {
       const act = acts.find((a) => a.id === r.actividadId);
       return [
@@ -362,12 +341,13 @@ export default function CostosPage() {
   };
 
   const cerrarAct = async (id: number) => {
+    const t = toast.loading("Cerrando actividad...");
     try {
       await patchActividades([{ id, estado: "Cerrada" as any }]);
-      toast.success("Actividad cerrada ✅");
+      toast.success("Actividad cerrada ✅", { id: t });
       await reloadAll();
     } catch (e: any) {
-      toast.error(e?.message ?? "No se pudo cerrar");
+      toast.error(e?.message ?? "No se pudo cerrar", { id: t });
     }
   };
 
@@ -399,23 +379,16 @@ export default function CostosPage() {
           title="Actividades (presupuesto y estado)"
           icon={<BarChart3 size={18} />}
           actions={
-            <>
-              <Button variant="outline" type="button" onClick={() => setOpenActs(true)}>
-                <Plus size={16} /> Actividades
-              </Button>
-              <Button variant="outline" type="button" onClick={() => setOpenCfg(true)}>
-                <Pencil size={16} /> Presupuestos
-              </Button>
-            </>
+            <Button variant="outline" type="button" onClick={() => setOpenActs(true)}>
+              <Plus size={16} /> Gestionar actividades
+            </Button>
           }
         >
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
             {acts.map((a) => {
               const gasto = execByAct[a.id] || 0;
               const disp = (a.presupuesto || 0) - gasto;
-              const pct = a.presupuesto
-                ? Math.min(100, Math.round((gasto / a.presupuesto) * 100))
-                : 0;
+              const pct = a.presupuesto ? Math.min(100, Math.round((gasto / a.presupuesto) * 100)) : 0;
 
               return (
                 <div key={a.id} className="rounded border border-[var(--subtle)] bg-white p-3">
@@ -450,9 +423,10 @@ export default function CostosPage() {
                 </div>
               );
             })}
+
             {!loading && acts.length === 0 && (
               <div className="rounded border border-[var(--subtle)] bg-white p-4 text-sm text-slate-600">
-                Aún no hay actividades. Crea tus actividades con el botón <b>Actividades</b>.
+                Aún no hay actividades. Crea tus actividades con el botón <b>Gestionar actividades</b>.
               </div>
             )}
           </div>
@@ -467,20 +441,10 @@ export default function CostosPage() {
               <div className="items-center hidden gap-2 md:flex">
                 <div className="relative">
                   <Calendar className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
-                  <Input
-                    type="date"
-                    value={d1}
-                    onChange={(e) => setD1(e.target.value)}
-                    className="w-40 pl-8"
-                  />
+                  <Input type="date" value={d1} onChange={(e) => setD1(e.target.value)} className="w-40 pl-8" />
                 </div>
-                <Input
-                  type="date"
-                  value={d2}
-                  onChange={(e) => setD2(e.target.value)}
-                  className="w-40"
-                />
-                <Select value={actId} onChange={(e) => setActId(e.target.value)} className="w-56">
+                <Input type="date" value={d2} onChange={(e) => setD2(e.target.value)} className="w-40" />
+                <Select value={actId} onChange={(e) => setActId(e.target.value)} className="w-64">
                   <option value="">Actividad: Todas</option>
                   {acts.map((a) => (
                     <option key={a.id} value={String(a.id)}>
@@ -496,12 +460,7 @@ export default function CostosPage() {
                     </option>
                   ))}
                 </Select>
-                <Input
-                  placeholder="Buscar…"
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  className="w-64"
-                />
+                <Input placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} className="w-64" />
               </div>
 
               <Button variant="outline" type="button" onClick={exportCSV}>
@@ -545,9 +504,7 @@ export default function CostosPage() {
                         <td className="px-3 py-2">
                           <div className="flex items-center gap-2">
                             <Building2 size={14} className="text-slate-400" />
-                            <span className="whitespace-nowrap">
-                              {a ? `${a.codigo} • ${a.nombre}` : "—"}
-                            </span>
+                            <span className="whitespace-nowrap">{a ? `${a.codigo} • ${a.nombre}` : "—"}</span>
                           </div>
                         </td>
                         <td className="px-3 py-2">{g.categoria}</td>
@@ -584,8 +541,8 @@ export default function CostosPage() {
 
       {/* Modal Gasto */}
       <GastoModal
-        open={open}
-        setOpen={setOpen}
+        open={openGasto}
+        setOpen={setOpenGasto}
         draft={draft}
         setDraft={setDraft}
         acts={acts}
@@ -594,45 +551,13 @@ export default function CostosPage() {
         onSave={guardar}
       />
 
-      {/* Modal Presupuestos */}
-      <PresupuestoModal
-        open={openCfg}
-        setOpen={setOpenCfg}
-        acts={acts}
-        onSaved={async () => {
-          await reloadAll();
-        }}
-      />
-
-      {/* Modal Actividades (crear/eliminar) */}
-      <Modal
+      {/* Modal Actividades */}
+      <ActividadesModal
         open={openActs}
-        onClose={() => setOpenActs(false)}
-        title="Gestionar actividades"
-        wide={false}
-        actions={
-          <>
-            <Button variant="ghost" type="button" onClick={() => setOpenActs(false)}>
-              Cerrar
-            </Button>
-            <Button
-              type="button"
-              onClick={async () => {
-                await reloadAll();
-                setOpenActs(false);
-              }}
-            >
-              Listo
-            </Button>
-          </>
-        }
-      >
-        {/* props en any para no romper por tipado si tu componente difiere */}
-        <ActividadesManager {...({} as any)} />
-        <div className="mt-3 text-xs text-slate-500">
-          * Al cerrar este modal se recargan las actividades.
-        </div>
-      </Modal>
+        setOpen={setOpenActs}
+        acts={acts}
+        onSaved={reloadAll}
+      />
     </DashboardShell>
   );
 }
@@ -666,10 +591,7 @@ function GastoModal({
   const ejecutadoSinEste = Math.max(0, ejecutado - (draft.id ? originalValor : 0));
   const disp = presupuesto - (ejecutadoSinEste + Number(draft.valor || 0));
   const pct = presupuesto
-    ? Math.max(
-        0,
-        Math.min(100, Math.round(((ejecutadoSinEste + Number(draft.valor || 0)) / presupuesto) * 100))
-      )
+    ? Math.max(0, Math.min(100, Math.round(((ejecutadoSinEste + Number(draft.valor || 0)) / presupuesto) * 100)))
     : 0;
 
   const onAdj = (files: FileList | null) => {
@@ -679,10 +601,7 @@ function GastoModal({
   };
 
   const rmAdj = (name: string) =>
-    setDraft({
-      ...draft,
-      adjuntos: (draft.adjuntos || []).filter((a: any) => a.name !== name),
-    });
+    setDraft({ ...draft, adjuntos: (draft.adjuntos || []).filter((a: any) => a.name !== name) });
 
   const valid =
     !!draft.actividadId &&
@@ -712,10 +631,7 @@ function GastoModal({
         <div className="grid grid-cols-1 gap-4 lg:col-span-2 md:grid-cols-2">
           <label className="grid gap-1 text-sm">
             <span className="text-slate-700">Actividad</span>
-            <Select
-              value={String(draft.actividadId)}
-              onChange={(e) => setDraft({ ...draft, actividadId: Number(e.target.value) })}
-            >
+            <Select value={String(draft.actividadId)} onChange={(e) => setDraft({ ...draft, actividadId: Number(e.target.value) })}>
               {acts.map((a) => (
                 <option key={a.id} value={String(a.id)}>
                   {a.codigo} • {a.nombre}
@@ -742,21 +658,12 @@ function GastoModal({
 
           <label className="grid gap-1 text-sm">
             <span className="text-slate-700">Valor</span>
-            <Input
-              type="number"
-              min={0}
-              value={Number(draft.valor || 0)}
-              onChange={(e) => setDraft({ ...draft, valor: Number(e.target.value) })}
-            />
+            <Input type="number" min={0} value={Number(draft.valor || 0)} onChange={(e) => setDraft({ ...draft, valor: Number(e.target.value) })} />
           </label>
 
           <label className="grid gap-1 text-sm md:col-span-2">
             <span className="text-slate-700">Descripción</span>
-            <Textarea
-              rows={3}
-              value={String(draft.descripcion || "")}
-              onChange={(e) => setDraft({ ...draft, descripcion: e.target.value })}
-            />
+            <Textarea rows={3} value={String(draft.descripcion || "")} onChange={(e) => setDraft({ ...draft, descripcion: e.target.value })} />
           </label>
 
           <label className="grid gap-1 text-sm">
@@ -837,24 +744,23 @@ function GastoModal({
   );
 }
 
-/* ============ Modal de Presupuestos ============ */
-function PresupuestoModal({
+/* ============ Modal Actividades (crear / editar / eliminar) ============ */
+function ActividadesModal({
   open,
   setOpen,
   acts,
-  setActs,
+  onSaved,
 }: {
   open: boolean;
   setOpen: (v: boolean) => void;
   acts: Actividad[];
-  setActs: (f: any) => void;
+  onSaved?: () => Promise<void> | void;
 }) {
   const [local, setLocal] = useState<Actividad[]>([]);
   const [newCodigo, setNewCodigo] = useState("");
   const [newNombre, setNewNombre] = useState("");
   const [newPres, setNewPres] = useState<number>(0);
 
-  // ✅ confirm modal state
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [toDelete, setToDelete] = useState<Actividad | null>(null);
@@ -872,19 +778,20 @@ function PresupuestoModal({
   };
 
   const save = async () => {
+    const t = toast.loading("Guardando cambios...");
     try {
       const items = local.map((a) => ({
         id: a.id,
-        presupuesto: a.presupuesto,
+        presupuesto: Number(a.presupuesto || 0),
         estado: a.estado,
         nombre: a.nombre,
       }));
       await patchActividades(items as any);
-      setActs(local);
-      toast.success("Actividades guardadas ✅");
+      toast.success("Actividades guardadas ✅", { id: t });
+      await onSaved?.();
       setOpen(false);
     } catch (e: any) {
-      toast.error(e?.message ?? "Error guardando actividades");
+      toast.error(e?.message ?? "Error guardando actividades", { id: t });
     }
   };
 
@@ -894,6 +801,7 @@ function PresupuestoModal({
     if (!codigo) return toast.error("Código requerido");
     if (!nombre) return toast.error("Nombre requerido");
 
+    const t = toast.loading("Creando actividad...");
     try {
       const created = await createActividad({
         codigo,
@@ -902,43 +810,58 @@ function PresupuestoModal({
         estado: "Abierta",
       });
 
-      toast.success("Actividad creada ✅");
-      setLocal((prev) =>
-        [...prev, created].sort((a, b) => a.codigo.localeCompare(b.codigo))
-      );
-      setActs((prev: Actividad[]) =>
-        [...prev, created].sort((a, b) => a.codigo.localeCompare(b.codigo))
-      );
+      if (!created || !created.id) {
+        toast.error("No se pudo crear", { id: t });
+        return;
+      }
+
+      toast.success("Actividad creada ✅", { id: t });
+      setLocal((prev) => [...prev, created].sort((a, b) => a.codigo.localeCompare(b.codigo)));
 
       setNewCodigo("");
       setNewNombre("");
       setNewPres(0);
+
+      await onSaved?.();
     } catch (e: any) {
-      toast.error(e?.message ?? "No se pudo crear");
+      toast.error(e?.message ?? "No se pudo crear", { id: t });
     }
   };
 
-  // ✅ ahora solo abre el modal (NO confirm nativo)
-  const pedirEliminar = (a: Actividad) => {
+  const askDelete = (a: Actividad) => {
     setToDelete(a);
     setConfirmOpen(true);
   };
 
-  // ✅ aquí se elimina de verdad
-  const confirmarEliminar = async () => {
+  const doDelete = async () => {
     if (!toDelete) return;
-    try {
-      setConfirmLoading(true);
-      await deleteActividad(toDelete.id);
+    setConfirmLoading(true);
+    const t = toast.loading("Eliminando...");
 
-      toast.success("Actividad eliminada ✅");
+    try {
+      const res = await deleteActividad(toDelete.id);
+
+      // ✅ soporte robusto: boolean / {ok:true} / {success:true}
+      const ok =
+        res === true ||
+        (typeof res === "object" && (res?.ok === true || res?.success === true));
+
+      if (!ok) {
+        // si tu deleteActividad devuelve false sin tirar error
+        toast.dismiss(t);
+        toast.error("No se pudo eliminar la actividad.");
+        return;
+      }
+
+      toast.success("Actividad eliminada ✅", { id: t });
+
       setLocal((prev) => prev.filter((x) => x.id !== toDelete.id));
-      setActs((prev: Actividad[]) => prev.filter((x) => x.id !== toDelete.id));
+      await onSaved?.();
 
       setConfirmOpen(false);
       setToDelete(null);
     } catch (e: any) {
-      toast.error(e?.message ?? "No se pudo eliminar");
+      toast.error(e?.message ?? "No se pudo eliminar", { id: t });
     } finally {
       setConfirmLoading(false);
     }
@@ -952,6 +875,7 @@ function PresupuestoModal({
         open={open}
         onClose={() => setOpen(false)}
         title="Actividades (crear / editar / eliminar)"
+        wide
         actions={
           <>
             <Button variant="ghost" type="button" onClick={() => setOpen(false)}>
@@ -962,30 +886,15 @@ function PresupuestoModal({
             </Button>
           </>
         }
-        wide
       >
         {/* Crear */}
         <div className="mb-4 rounded border border-[var(--subtle)] bg-white p-3">
           <div className="mb-2 text-sm font-semibold">Crear actividad</div>
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
-            <Input
-              placeholder="Código (A1)"
-              value={newCodigo}
-              onChange={(e) => setNewCodigo(e.target.value)}
-            />
-            <Input
-              placeholder="Nombre"
-              value={newNombre}
-              onChange={(e) => setNewNombre(e.target.value)}
-            />
-            <Input
-              type="number"
-              min={0}
-              placeholder="Presupuesto"
-              value={newPres}
-              onChange={(e) => setNewPres(Number(e.target.value))}
-            />
-            <Button type="button" onClick={crear}>
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-[220px_1fr_220px_160px]">
+            <Input placeholder="Código (A1)" value={newCodigo} onChange={(e) => setNewCodigo(e.target.value)} />
+            <Input placeholder="Nombre" value={newNombre} onChange={(e) => setNewNombre(e.target.value)} />
+            <Input type="number" min={0} placeholder="Presupuesto" value={newPres} onChange={(e) => setNewPres(Number(e.target.value || 0))} />
+            <Button type="button" onClick={crear} className="justify-center">
               <Plus size={16} /> Crear
             </Button>
           </div>
@@ -996,14 +905,14 @@ function PresupuestoModal({
 
         {/* Tabla */}
         <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
+          <table className="w-full text-sm table-fixed">
             <thead className="border-b border-[var(--subtle)] text-slate-500">
               <tr>
-                <th className="px-3 py-2 text-left">Código</th>
-                <th className="px-3 py-2 text-left">Actividad</th>
-                <th className="px-3 py-2 text-right">Presupuesto</th>
-                <th className="px-3 py-2 text-left">Estado</th>
-                <th className="px-3 py-2 text-left w-44">Acciones</th>
+                <th className="w-[110px] px-3 py-2 text-left">Código</th>
+                <th className="px-3 py-2 text-left">Nombre</th>
+                <th className="w-[220px] px-3 py-2 text-right">Presupuesto</th>
+                <th className="w-[180px] px-3 py-2 text-left">Estado</th>
+                <th className="w-[160px] px-3 py-2 text-left">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -1011,25 +920,19 @@ function PresupuestoModal({
                 <tr key={a.id} className="border-b border-[var(--subtle)]/70">
                   <td className="px-3 py-2">{a.codigo}</td>
                   <td className="px-3 py-2">
-                    <Input
-                      value={a.nombre}
-                      onChange={(e) => setAct(i, { nombre: e.target.value })}
-                    />
+                    <Input value={a.nombre} onChange={(e) => setAct(i, { nombre: e.target.value })} className="w-full" />
                   </td>
                   <td className="px-3 py-2 text-right">
                     <Input
                       type="number"
                       min={0}
                       value={a.presupuesto}
-                      onChange={(e) => setAct(i, { presupuesto: Number(e.target.value) })}
-                      className="text-right w-36"
+                      onChange={(e) => setAct(i, { presupuesto: Number(e.target.value || 0) })}
+                      className="w-full text-right"
                     />
                   </td>
                   <td className="px-3 py-2">
-                    <Select
-                      value={a.estado}
-                      onChange={(e) => setAct(i, { estado: e.target.value as any })}
-                    >
+                    <Select value={a.estado} onChange={(e) => setAct(i, { estado: e.target.value as any })} className="w-full">
                       <option value="Abierta">Abierta</option>
                       <option value="Cerrada">Cerrada</option>
                     </Select>
@@ -1038,14 +941,15 @@ function PresupuestoModal({
                     <Button
                       variant="ghost"
                       type="button"
-                      onClick={() => pedirEliminar(a)}
-                      className="text-rose-700 hover:text-rose-800"
+                      onClick={() => askDelete(a)}
+                      className="text-rose-600 hover:text-rose-700"
                     >
                       <Trash2 size={14} /> Eliminar
                     </Button>
                   </td>
                 </tr>
               ))}
+
               {local.length === 0 && (
                 <tr>
                   <td colSpan={5} className="py-6 text-center text-slate-500">
@@ -1058,24 +962,21 @@ function PresupuestoModal({
         </div>
       </Modal>
 
-      {/* ✅ ConfirmModal real (ya no sale el del navegador) */}
       <ConfirmModal
         open={confirmOpen}
+        loading={confirmLoading}
         title="Eliminar actividad"
-        message={
-          toDelete
-            ? `¿Eliminar la actividad ${toDelete.codigo} • ${toDelete.nombre}?`
-            : "¿Eliminar actividad?"
-        }
+        message={toDelete ? `¿Eliminar la actividad ${toDelete.codigo} • ${toDelete.nombre}?` : "¿Eliminar actividad?"}
         confirmText="Sí, eliminar"
         cancelText="Cancelar"
-        loading={confirmLoading}
+        tone="danger"
         onClose={() => {
-          if (confirmLoading) return;
-          setConfirmOpen(false);
-          setToDelete(null);
+          if (!confirmLoading) {
+            setConfirmOpen(false);
+            setToDelete(null);
+          }
         }}
-        onConfirm={confirmarEliminar}
+        onConfirm={doDelete}
       />
     </>
   );

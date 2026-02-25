@@ -88,7 +88,6 @@ export async function createActividad(data: {
   presupuesto?: number;
   estado?: EstadoActividad;
 }): Promise<Actividad | null> {
-  const t = toast.loading("Creando actividad...");
   try {
     const res = await fetch("/api/costos/actividades", {
       method: "POST",
@@ -97,10 +96,10 @@ export async function createActividad(data: {
     });
     const body = await readJsonOrText(res);
     if (!res.ok) throw new Error(errMsg(body, `HTTP ${res.status}`));
-    toast.success("Actividad creada ✅", { id: t });
+    // ✅ sin toast aquí (lo maneja el UI)
     return body as Actividad;
   } catch (e: any) {
-    toast.error(e?.message ?? "Error creando actividad", { id: t });
+    toast.error(e?.message ?? "Error creando actividad");
     return null;
   }
 }
@@ -114,7 +113,6 @@ export async function createActividad(data: {
 export async function patchActividades(
   items: Array<{ id: number; presupuesto?: number; estado?: EstadoActividad; nombre?: string }>
 ): Promise<Actividad[]> {
-  const t = toast.loading("Guardando actividades...");
   try {
     const res = await fetch("/api/costos/actividades", {
       method: "PATCH",
@@ -125,17 +123,16 @@ export async function patchActividades(
     if (!res.ok) throw new Error(errMsg(body, `HTTP ${res.status}`));
 
     const out = Array.isArray(body?.items) ? body.items : Array.isArray(body) ? body : [];
-    toast.success("Actividades guardadas ✅", { id: t });
+    // ✅ sin toast aquí (lo maneja el UI)
     return out as Actividad[];
   } catch (e: any) {
-    toast.error(e?.message ?? "Error guardando actividades", { id: t });
-    throw e;
+    toast.error(e?.message ?? "Error guardando actividades");
+    throw e; // para que el UI pueda catch si quiere
   }
 }
 
 // DELETE /api/costos/actividades/[id]
 export async function deleteActividad(id: number): Promise<boolean> {
-  const t = toast.loading("Eliminando actividad...");
   try {
     const res = await fetch(`/api/costos/actividades/${id}`, {
       method: "DELETE",
@@ -143,10 +140,11 @@ export async function deleteActividad(id: number): Promise<boolean> {
     });
     const body = await readJsonOrText(res);
     if (!res.ok) throw new Error(errMsg(body, `HTTP ${res.status}`));
-    toast.success("Actividad eliminada ✅", { id: t });
+
+    // ✅ sin toast aquí (lo maneja el UI)
     return true;
   } catch (e: any) {
-    toast.error(e?.message ?? "No se pudo eliminar la actividad", { id: t });
+    toast.error(e?.message ?? "No se pudo eliminar la actividad");
     return false;
   }
 }
@@ -181,7 +179,6 @@ export async function getGastos(params: {
     const body = await readJsonOrText(res);
     if (!res.ok) throw new Error(errMsg(body, `HTTP ${res.status}`));
 
-    // esperado: {items,total,page,pageSize}
     const items = Array.isArray(body?.items) ? body.items : Array.isArray(body) ? body : [];
     return {
       items: items as Gasto[],
@@ -197,7 +194,6 @@ export async function getGastos(params: {
 
 // POST /api/costos/gastos
 export async function createGasto(data: Omit<Gasto, "id">): Promise<Gasto | null> {
-  const t = toast.loading("Creando gasto...");
   try {
     const res = await fetch("/api/costos/gastos", {
       method: "POST",
@@ -206,17 +202,17 @@ export async function createGasto(data: Omit<Gasto, "id">): Promise<Gasto | null
     });
     const body = await readJsonOrText(res);
     if (!res.ok) throw new Error(errMsg(body, `HTTP ${res.status}`));
-    toast.success("Gasto creado ✅", { id: t });
+
+    // ✅ sin toast aquí (lo maneja el UI)
     return body as Gasto;
   } catch (e: any) {
-    toast.error(e?.message ?? "Error creando gasto", { id: t });
+    toast.error(e?.message ?? "Error creando gasto");
     return null;
   }
 }
 
 // PATCH /api/costos/gastos/[id]
 export async function updateGasto(id: number, data: Partial<Omit<Gasto, "id">>): Promise<Gasto | null> {
-  const t = toast.loading("Actualizando gasto...");
   try {
     const res = await fetch(`/api/costos/gastos/${id}`, {
       method: "PATCH",
@@ -225,17 +221,17 @@ export async function updateGasto(id: number, data: Partial<Omit<Gasto, "id">>):
     });
     const body = await readJsonOrText(res);
     if (!res.ok) throw new Error(errMsg(body, `HTTP ${res.status}`));
-    toast.success("Gasto actualizado ✅", { id: t });
+
+    // ✅ sin toast aquí (lo maneja el UI)
     return body as Gasto;
   } catch (e: any) {
-    toast.error(e?.message ?? "Error actualizando gasto", { id: t });
+    toast.error(e?.message ?? "Error actualizando gasto");
     return null;
   }
 }
 
 // DELETE /api/costos/gastos/[id]
 export async function deleteGasto(id: number): Promise<boolean> {
-  const t = toast.loading("Eliminando gasto...");
   try {
     const res = await fetch(`/api/costos/gastos/${id}`, {
       method: "DELETE",
@@ -243,10 +239,11 @@ export async function deleteGasto(id: number): Promise<boolean> {
     });
     const body = await readJsonOrText(res);
     if (!res.ok) throw new Error(errMsg(body, `HTTP ${res.status}`));
-    toast.success("Gasto eliminado ✅", { id: t });
+
+    // ✅ sin toast aquí (lo maneja el UI)
     return true;
   } catch (e: any) {
-    toast.error(e?.message ?? "Error eliminando gasto", { id: t });
+    toast.error(e?.message ?? "Error eliminando gasto");
     return false;
   }
 }
