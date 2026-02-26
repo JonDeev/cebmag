@@ -145,11 +145,12 @@ async function fetchRoles(): Promise<Role[]> {
 /* ================= Draft ================= */
 type Draft = {
   id?: number;
+  usuario: string; // ✅ nuevo
   nombre: string;
   email: string;
   activo: boolean;
-  roleId?: number | null; // UI (1 rol)
-  password?: string; // solo crear
+  roleId?: number | null;
+  password?: string;
 };
 
 function userRolesLabel(u: Usuario) {
@@ -236,6 +237,7 @@ export default function UsuariosPage() {
   const startCreate = () => {
     const defaultRoleId = roles[0]?.id ?? null;
     setEditing({
+      usuario: "",
       nombre: "",
       email: "",
       activo: true,
@@ -248,6 +250,7 @@ export default function UsuariosPage() {
   const startEdit = (u: Usuario) => {
     setEditing({
       id: u.id,
+      usuario: u.usuario ?? "",   // ✅
       nombre: u.nombre ?? "",
       email: u.email,
       activo: !!u.activo,
@@ -255,18 +258,21 @@ export default function UsuariosPage() {
     });
     setOpen(true);
   };
-
+  
   const save = async () => {
     if (!editing) return;
 
+    const usuario = (editing.usuario ?? "").trim();
     const nombre = (editing.nombre ?? "").trim();
     const email = (editing.email ?? "").trim();
+
+    if (!usuario) return toast.error("Usuario requerido");
+    if (usuario.length < 3) return toast.error("Usuario mínimo 3 caracteres");
     if (!email) return toast.error("Email requerido");
 
     const roleId = typeof editing.roleId === "number" ? editing.roleId : null;
     const roleIds = roleId ? [roleId] : [];
 
-    // CREATE
     if (!editing.id) {
       let password = (editing.password ?? "").trim();
       if (!password) {
@@ -275,6 +281,7 @@ export default function UsuariosPage() {
       }
 
       const created = await createUser({
+        usuario,
         email,
         password,
         nombre: nombre || undefined,
@@ -283,14 +290,13 @@ export default function UsuariosPage() {
       });
 
       if (!created) return;
-
       setOpen(false);
       await loadUsers(q);
       return;
     }
 
-    // UPDATE
     const updated = await updateUser(editing.id, {
+      usuario,        // ✅ ahora puedes editarlo
       nombre: nombre || "",
       activo: !!editing.activo,
       roleIds,
@@ -440,6 +446,18 @@ export default function UsuariosPage() {
               onChange={(e) => setEditing((p) => (p ? { ...p, nombre: e.target.value } : p))}
               placeholder="Nombre completo"
             />
+          </label>
+
+          <label className="grid gap-1 text-sm">
+            <span className="text-slate-600">Usuario</span>
+            <Input
+              value={editing?.usuario || ""}
+              onChange={(e) => setEditing((p) => (p ? { ...p, usuario: e.target.value } : p))}
+              placeholder="Ej: admin, operador1"
+            />
+            <div className="text-xs text-slate-500">
+              * Este será el usuario para iniciar sesión.
+            </div>
           </label>
 
           <label className="grid gap-1 text-sm">

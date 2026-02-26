@@ -1,3 +1,4 @@
+// src/app/api/users/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
@@ -10,6 +11,7 @@ export const dynamic = "force-dynamic";
 function hashPassword(plain: string) {
   const salt = crypto.randomBytes(16);
   const hash = crypto.scryptSync(plain, salt, 32);
+  // guardamos: scrypt$<saltHex>$<hashHex>
   return `scrypt$${salt.toString("hex")}$${hash.toString("hex")}`;
 }
 
@@ -17,21 +19,22 @@ function toUserDto(u: any) {
   const primary = u.roles?.[0]?.role ?? null;
   return {
     id: u.id,
+    usuario: u.usuario, // ✅ username
     email: u.email,
     nombre: u.nombre ?? null,
     activo: !!u.activo,
 
-    // ✅ compat: seguimos retornando roles[]
+    // roles[]
     roles: (u.roles ?? []).map((ur: any) => ({
       id: ur.role.id,
       name: ur.role.name,
     })),
 
-    // ✅ cómodo para UI de “1 rol”
+    // 1 rol (UI)
     roleId: primary?.id ?? null,
     roleName: primary?.name ?? null,
 
-    // ✅ cómodo para tu TSX (rol/estado)
+    // compat TSX (rol/estado)
     rol: primary?.name ?? "Consulta",
     estado: u.activo ? "Activo" : "Inactivo",
 
@@ -42,15 +45,19 @@ function toUserDto(u: any) {
 
 const createUserBody = z
   .object({
+    usuario: z.string().trim().min(3, "Usuario mínimo 3 caracteres").max(50),
     email: z.string().email(),
     password: z.string().min(6, "Password mínimo 6 caracteres"),
-    nombre: z.string().trim().optional(),
+
+    // ⚠️ allow null/undefined desde UI
+    nombre: z.string().trim().min(1).optional().nullable(),
+
     activo: z.boolean().optional(),
 
-    // ✅ nuevo: 1 rol
-    roleId: z.number().int().positive().optional(),
+    // 1 rol
+    roleId: z.number().int().positive().optional().nullable(),
 
-    // ✅ compat: si te llega roleIds, lo aceptamos pero máximo 1
+    // compat: roleIds (máximo 1)
     roleIds: z.array(z.number().int().positive()).optional(),
   })
   .superRefine((val, ctx) => {
@@ -70,11 +77,11 @@ const createUserBody = z
     }
   });
 
-async function resolveRoleId(input: { roleId?: number; roleIds?: number[] }) {
-  if (input.roleId) return input.roleId;
+async function resolveRoleId(input: { roleId?: number | null; roleIds?: number[] }) {
+  if (typeof input.roleId === "number") return input.roleId;
   if (input.roleIds?.length) return input.roleIds[0];
 
-  // ✅ opcional: si existe rol "Consulta", úsalo como default
+  // opcional: default "Consulta"
   const consulta = await prisma.role.findUnique({ where: { name: "Consulta" } });
   return consulta?.id ?? null;
 }
@@ -87,6 +94,7 @@ export async function GET(req: NextRequest) {
   const where: any = {};
   if (q) {
     where.OR = [
+      { usuario: { contains: q, mode: "insensitive" } }, // ✅ buscar por username
       { email: { contains: q, mode: "insensitive" } },
       { nombre: { contains: q, mode: "insensitive" } },
     ];
@@ -98,7 +106,7 @@ export async function GET(req: NextRequest) {
     include: {
       roles: {
         include: { role: true },
-        orderBy: { roleId: "asc" }, // ✅ consistente (1 rol => [0])
+        orderBy: { roleId: "asc" }, // consistente (1 rol => [0])
       },
     },
   });
@@ -115,9 +123,9 @@ export async function POST(req: NextRequest) {
     const raw = await req.json();
     const data = createUserBody.parse(raw);
 
-    const roleId = await resolveRoleId({ roleId: data.roleId, roleIds: data.roleIds });
+    const roleId = await resolveRoleId({ roleId: data.roleId ?? null, roleIds: data.roleIds });
 
-    // validar rol si viene (o si encontramos "Consulta")
+    // validar rol si viene
     if (roleId) {
       const exists = await prisma.role.findUnique({ where: { id: roleId } });
       if (!exists) {
@@ -127,12 +135,12 @@ export async function POST(req: NextRequest) {
 
     const created = await prisma.user.create({
       data: {
+        usuario: data.usuario.trim(), // ✅
         email: data.email.toLowerCase().trim(),
         password: hashPassword(data.password),
-        nombre: data.nombre?.trim() || null,
+        nombre: (data.nombre ?? "").trim() || null,
         activo: typeof data.activo === "boolean" ? data.activo : true,
 
-        // ✅ 1 rol (si hay)
         roles: roleId ? { create: { roleId } } : undefined,
       },
       include: {
@@ -147,8 +155,10 @@ export async function POST(req: NextRequest) {
   } catch (e: any) {
     console.error("POST /api/users error:", e);
 
+    // ⚠️ Prisma unique
     if (e?.code === "P2002") {
-      return NextResponse.json({ error: "Ya existe un usuario con ese email" }, { status: 409 });
+      // puede fallar por usuario o email; devolvemos genérico
+      return NextResponse.json({ error: "Ya existe un usuario con ese usuario o email" }, { status: 409 });
     }
 
     if (e?.name === "ZodError") {

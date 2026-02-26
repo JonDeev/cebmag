@@ -8,10 +8,23 @@ export const dynamic = "force-dynamic";
 
 const createRoleBody = z.object({
   name: z.string().trim().min(2),
-  description: z.string().trim().nullable().optional(), // ✅ acepta null
-  permissions: z.any().optional(), // Json libre (obj/array)
+  description: z.string().trim().nullable().optional(),
+  permissions: z.any().optional(),
 });
 
+function toRoleDto(r: any) {
+  return {
+    id: r.id,
+    name: r.name,
+    description: r.description ?? null,
+    permissions: r.permissions ?? null,
+    usersCount: typeof r._count?.users === "number" ? r._count.users : 0,
+    createdAt: r.createdAt ?? null,
+    updatedAt: r.updatedAt ?? null,
+  };
+}
+
+/* ===================== GET /api/roles ===================== */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const q = (searchParams.get("q") ?? "").trim();
@@ -27,11 +40,16 @@ export async function GET(req: NextRequest) {
   const items = await prisma.role.findMany({
     where,
     orderBy: { name: "asc" },
+    include: { _count: { select: { users: true } } }, // ✅ esto es lo que faltaba
   });
 
-  return NextResponse.json({ items }, { headers: { "cache-control": "no-store" } });
+  return NextResponse.json(
+    { items: items.map(toRoleDto) },
+    { headers: { "cache-control": "no-store" } }
+  );
 }
 
+/* ===================== POST /api/roles ===================== */
 export async function POST(req: NextRequest) {
   try {
     const raw = await req.json();
@@ -40,13 +58,13 @@ export async function POST(req: NextRequest) {
     const created = await prisma.role.create({
       data: {
         name: data.name,
-        // ✅ si viene null o "", queda null
         description: data.description?.trim() || null,
-        permissions: typeof data.permissions === "undefined" ? null : (data.permissions as any),
+        permissions: typeof data.permissions === "undefined" ? null : data.permissions,
       },
+      include: { _count: { select: { users: true } } }, // ✅ para que devuelva usersCount=0
     });
 
-    return NextResponse.json(created, { status: 201 });
+    return NextResponse.json(toRoleDto(created), { status: 201 });
   } catch (e: any) {
     console.error("POST /api/roles error:", e);
 

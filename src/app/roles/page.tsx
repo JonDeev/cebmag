@@ -403,9 +403,6 @@ export default function RolesPermisosPage() {
               <Users size={14} /> Asignaciones (usuarios)
             </div>
             <div className="mt-1 text-2xl font-semibold">{stats.totalUsers}</div>
-            <div className="mt-1 text-[11px] text-slate-500">
-              * Si tu GET /api/roles no envía usersCount, aquí saldrá 0.
-            </div>
           </div>
 
           <div className="rounded-xl border border-[var(--subtle)] bg-white p-3">

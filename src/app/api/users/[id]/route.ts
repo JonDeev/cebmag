@@ -5,17 +5,23 @@ import { z } from "zod";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/* ===================== helpers ===================== */
 async function getId(ctx: { params: any }) {
-  const p = await ctx.params;
+  const p = await ctx.params; // soporta objeto o Promise
   const raw = String(p?.id ?? "").trim();
   const id = Number(raw);
   return Number.isFinite(id) ? id : null;
 }
 
+const normUsuario = (v: string) => v.trim().toLowerCase(); // ✅ recomendado (evita Admin/admin)
+
+/** DTO uniforme para tu UI */
 function toUserDto(u: any) {
   const primary = u.roles?.[0]?.role ?? null;
+
   return {
     id: u.id,
+    usuario: u.usuario, // ✅ nuevo username
     email: u.email,
     nombre: u.nombre ?? null,
     activo: !!u.activo,
@@ -25,6 +31,7 @@ function toUserDto(u: any) {
       name: ur.role.name,
     })),
 
+    // 1 rol (comodidad UI)
     roleId: primary?.id ?? null,
     roleName: primary?.name ?? null,
     rol: primary?.name ?? "Consulta",
@@ -35,19 +42,41 @@ function toUserDto(u: any) {
   };
 }
 
+/* ===================== Zod ===================== */
+/** null/"" -> undefined (no tocar) */
+const optString = (min = 0) =>
+  z.preprocess(
+    (v) => (v === null || typeof v === "undefined" ? undefined : String(v)),
+    min > 0 ? z.string().trim().min(min) : z.string().trim()
+  ).optional();
+
+/** roleId puede venir null */
+const optRoleId = z.preprocess(
+  (v) => (v === null || typeof v === "undefined" || v === "" ? undefined : v),
+  z.number().int().positive()
+).optional();
+
 const patchUserBody = z
   .object({
-    nombre: z.string().trim().optional(),
+    // ✅ nuevo: usuario
+    usuario: optString(3), // si viene, se actualiza (mín 3)
+
+    // nombre puede venir null; si viene "", lo dejamos como null al guardar
+    nombre: z.preprocess(
+      (v) => (v === null || typeof v === "undefined" ? undefined : String(v)),
+      z.string().trim()
+    ).optional(),
+
     activo: z.boolean().optional(),
 
     // ✅ 1 rol
-    roleId: z.number().int().positive().optional(),
+    roleId: optRoleId,
 
     // ✅ compat: roleIds máximo 1
     roleIds: z.array(z.number().int().positive()).optional(),
   })
   .superRefine((val, ctx) => {
-    if (val.roleId && val.roleIds?.length) {
+    if (typeof val.roleId !== "undefined" && val.roleIds?.length) {
       ctx.addIssue({
         code: "custom",
         message: "Envía solo roleId (o roleIds, pero no ambos).",
@@ -64,7 +93,7 @@ const patchUserBody = z
   });
 
 function resolveRoleId(data: { roleId?: number; roleIds?: number[] }) {
-  if (data.roleId) return data.roleId;
+  if (typeof data.roleId === "number") return data.roleId;
   if (data.roleIds?.length) return data.roleIds[0];
   return null;
 }
@@ -82,7 +111,10 @@ export async function GET(_req: NextRequest, ctx: { params: any }) {
   });
 
   if (!u) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
-  return NextResponse.json(toUserDto(u), { headers: { "cache-control": "no-store" } });
+
+  return NextResponse.json(toUserDto(u), {
+    headers: { "cache-control": "no-store" },
+  });
 }
 
 /* ===================== PATCH /api/users/[id] ===================== */
@@ -96,25 +128,37 @@ export async function PATCH(req: NextRequest, ctx: { params: any }) {
 
     const roleId = resolveRoleId(data);
 
-    if (roleId) {
+    // validar rol si viene en request (roleId o roleIds)
+    const roleTouched =
+      typeof data.roleId !== "undefined" || typeof data.roleIds !== "undefined";
+
+    if (roleTouched && roleId) {
       const exists = await prisma.role.findUnique({ where: { id: roleId } });
       if (!exists) {
-        return NextResponse.json({ error: "El rol enviado no existe" }, { status: 400 });
+        return NextResponse.json(
+          { error: "El rol enviado no existe" },
+          { status: 400 }
+        );
       }
     }
 
     const updated = await prisma.$transaction(async (tx) => {
-      // campos simples
+      // update campos simples
       await tx.user.update({
         where: { id },
         data: {
-          ...(typeof data.nombre !== "undefined" ? { nombre: data.nombre || null } : {}),
+          ...(typeof data.usuario !== "undefined"
+            ? { usuario: normUsuario(data.usuario) }
+            : {}),
+          ...(typeof data.nombre !== "undefined"
+            ? { nombre: data.nombre.trim() ? data.nombre.trim() : null }
+            : {}),
           ...(typeof data.activo !== "undefined" ? { activo: data.activo } : {}),
         },
       });
 
-      // ✅ reemplazo de rol si viene roleId/roleIds
-      if (typeof data.roleId !== "undefined" || typeof data.roleIds !== "undefined") {
+      // reemplazo de rol si lo tocaron
+      if (roleTouched) {
         await tx.userRole.deleteMany({ where: { userId: id } });
         if (roleId) {
           await tx.userRole.create({ data: { userId: id, roleId } });
@@ -123,7 +167,9 @@ export async function PATCH(req: NextRequest, ctx: { params: any }) {
 
       return tx.user.findUnique({
         where: { id },
-        include: { roles: { include: { role: true }, orderBy: { roleId: "asc" } } },
+        include: {
+          roles: { include: { role: true }, orderBy: { roleId: "asc" } },
+        },
       });
     });
 
@@ -132,11 +178,25 @@ export async function PATCH(req: NextRequest, ctx: { params: any }) {
   } catch (e: any) {
     console.error("PATCH /api/users/[id] error:", e);
 
-    if (e?.name === "ZodError") {
-      return NextResponse.json({ error: "Datos inválidos", details: e.errors }, { status: 400 });
+    // unique (usuario/email)
+    if (e?.code === "P2002") {
+      return NextResponse.json(
+        { error: "Ya existe un usuario con ese usuario o email" },
+        { status: 409 }
+      );
     }
 
-    return NextResponse.json({ error: e?.message ?? "Error actualizando" }, { status: 500 });
+    if (e?.name === "ZodError") {
+      return NextResponse.json(
+        { error: "Datos inválidos", details: e.errors },
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json(
+      { error: e?.message ?? "Error actualizando" },
+      { status: 500 }
+    );
   }
 }
 
@@ -150,6 +210,9 @@ export async function DELETE(_req: NextRequest, ctx: { params: any }) {
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     console.error("DELETE /api/users/[id] error:", e);
-    return NextResponse.json({ error: e?.message ?? "Error eliminando" }, { status: 500 });
+    return NextResponse.json(
+      { error: e?.message ?? "Error eliminando" },
+      { status: 500 }
+    );
   }
 }

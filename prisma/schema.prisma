@@ -206,6 +206,9 @@ enum DiscapacidadTipo {
  */
 model User {
   id        Int      @id @default(autoincrement())
+
+  usuario   String   @unique // ✅ nuevo: username para login
+
   email     String   @unique
   password  String
   nombre    String?
