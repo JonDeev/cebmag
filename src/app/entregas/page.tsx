@@ -24,7 +24,6 @@ import {
   type Entrega,
   type Estado,
   type Item,
-  type Adj,
   type TipoDoc,
 } from "@/lib/entregas.api";
 
@@ -34,8 +33,11 @@ function Button({
   variant = "solid",
   className = "",
   ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "solid" | "outline" | "ghost" }) {
-  const base = "inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm transition";
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: "solid" | "outline" | "ghost";
+}) {
+  const base =
+    "inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm transition";
   const styles =
     variant === "solid"
       ? "bg-[var(--brand)] text-white hover:opacity-90"
@@ -52,7 +54,9 @@ function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
-      className={`w-full rounded-md border border-[var(--subtle)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 ${props.className || ""}`}
+      className={`w-full rounded-md border border-[var(--subtle)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 ${
+        props.className || ""
+      }`}
     />
   );
 }
@@ -60,7 +64,9 @@ function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select
       {...props}
-      className={`w-full rounded-md border border-[var(--subtle)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 ${props.className || ""}`}
+      className={`w-full rounded-md border border-[var(--subtle)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 ${
+        props.className || ""
+      }`}
     />
   );
 }
@@ -68,7 +74,9 @@ function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
       {...props}
-      className={`w-full rounded-md border border-[var(--subtle)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 ${props.className || ""}`}
+      className={`w-full rounded-md border border-[var(--subtle)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 ${
+        props.className || ""
+      }`}
     />
   );
 }
@@ -84,9 +92,25 @@ function Badge({
     amber: "bg-amber-100 text-amber-700 border-amber-200",
     emerald: "bg-emerald-100 text-emerald-700 border-emerald-200",
   } as const;
-  return <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${map[tone]}`}>{children}</span>;
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${map[tone]}`}
+    >
+      {children}
+    </span>
+  );
 }
-function Section({ title, icon, actions, children }: { title: string; icon: React.ReactNode; actions?: React.ReactNode; children: React.ReactNode }) {
+function Section({
+  title,
+  icon,
+  actions,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  actions?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <div className="rounded-md border border-[var(--subtle)] bg-[var(--panel)]">
       <div className="flex items-center justify-between border-b border-[var(--subtle)] px-4 py-3">
@@ -119,10 +143,7 @@ function Modal({
 
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
-      {/* overlay */}
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-
-      {/* panel */}
       <div className="absolute inset-0 flex items-center justify-center p-4">
         <div
           className={[
@@ -132,7 +153,6 @@ function Modal({
             "flex flex-col",
           ].join(" ")}
         >
-          {/* header (fixed) */}
           <div className="flex items-center justify-between border-b border-[var(--subtle)] px-5 py-4">
             <h4 className="text-sm font-semibold">{title}</h4>
             <button
@@ -145,10 +165,8 @@ function Modal({
             </button>
           </div>
 
-          {/* content (scroll) */}
           <div className="flex-1 min-h-0 p-5 overflow-y-auto">{children}</div>
 
-          {/* footer (fixed) */}
           <div className="flex items-center justify-end gap-2 border-t border-[var(--subtle)] px-5 py-4">
             {actions}
           </div>
@@ -156,6 +174,61 @@ function Modal({
       </div>
     </div>
   );
+}
+
+/* ============ Sesión (usuario logueado) ============ */
+type SessionUser = { id: number; nombre: string; email?: string | null };
+
+async function readJsonOrText(res: Response) {
+  const raw = await res.text();
+  try {
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return raw || null;
+  }
+}
+
+function pickUserFromAny(obj: any): SessionUser | null {
+  const u = obj?.user ?? obj?.data?.user ?? obj;
+  const id = Number(u?.id);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  const nombre = String(u?.nombre ?? u?.name ?? "").trim();
+  return { id, nombre: nombre || "Usuario", email: u?.email ?? null };
+}
+
+function loadUserFromStorage(): SessionUser | null {
+  if (typeof window === "undefined") return null;
+  const keys = ["auth_user", "user", "session_user", "cebmag_user"];
+  for (const k of keys) {
+    const raw = window.localStorage.getItem(k);
+    if (!raw) continue;
+    try {
+      const obj = JSON.parse(raw);
+      const u = pickUserFromAny(obj);
+      if (u) return u;
+    } catch {}
+  }
+  return null;
+}
+
+async function loadSessionUser(): Promise<SessionUser | null> {
+  // 1) Si tienes endpoint de sesión:
+  try {
+    const res = await fetch(`/api/auth/me?ts=${Date.now()}`, {
+      cache: "no-store",
+      headers: { "cache-control": "no-cache", pragma: "no-cache" },
+    });
+    if (res.ok) {
+      const data = await readJsonOrText(res);
+      const u = pickUserFromAny(data);
+      if (u) return u;
+    }
+  } catch {
+    // ignore
+  }
+
+  // 2) fallback localStorage
+  return loadUserFromStorage();
 }
 
 /* ============ Utilidades ============ */
@@ -178,7 +251,9 @@ const TEMPLATES: Record<string, Item[]> = {
   ],
 };
 
-function emptyDraft(): Entrega {
+type EntregaDraft = Entrega & { responsableUserId?: number | null };
+
+function emptyDraft(): EntregaDraft {
   return {
     id: 0,
     comprobante: "",
@@ -186,6 +261,7 @@ function emptyDraft(): Entrega {
     beneficiario: { tipo_doc: "CC", doc: "", nombre: "" },
     direccion: "",
     responsable: "",
+    responsableUserId: null,
     estado: "Pendiente",
     kit: "",
     items: [],
@@ -204,7 +280,6 @@ const esc = (v: any) =>
 
 const fmtFecha = (iso: string) => {
   if (!iso) return "";
-  // evita corrimientos por zona horaria
   const d = new Date(`${iso}T00:00:00`);
   return d.toLocaleDateString("es-CO", { year: "numeric", month: "2-digit", day: "2-digit" });
 };
@@ -346,13 +421,15 @@ export default function EntregasPage() {
   const [rows, setRows] = useState<Entrega[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const [me, setMe] = useState<SessionUser | null>(null);
+
   const [q, setQ] = useState("");
   const [estado, setEstado] = useState<"" | Estado>("");
   const [r1, setR1] = useState("");
   const [r2, setR2] = useState("");
 
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<Entrega | null>(null);
+  const [draft, setDraft] = useState<EntregaDraft | null>(null);
 
   const reload = async () => {
     setLoading(true);
@@ -365,6 +442,11 @@ export default function EntregasPage() {
   };
 
   useEffect(() => {
+    (async () => {
+      const u = await loadSessionUser();
+      setMe(u);
+    })();
+
     reload().catch(() => toast.error("No se pudo cargar entregas"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -401,40 +483,63 @@ export default function EntregasPage() {
   }, [rows]);
 
   const nueva = () => {
-    setDraft(emptyDraft());
+    const d = emptyDraft();
+
+    // ✅ set responsable desde sesión (no editable)
+    if (me) {
+      d.responsable = me.nombre;
+      d.responsableUserId = me.id;
+    } else {
+      // si no hay sesión, igual abre, pero avisamos
+      toast.error("No pude leer el usuario de sesión. Re-inicia sesión.");
+    }
+
+    setDraft(d);
     setOpen(true);
   };
 
   const editar = (e: Entrega) => {
-    setDraft(JSON.parse(JSON.stringify(e)));
+    // al editar, NO pisamos responsable (solo mostramos el que ya tiene)
+    setDraft(JSON.parse(JSON.stringify(e)) as EntregaDraft);
     setOpen(true);
   };
 
   const guardar = async () => {
     if (!draft) return;
 
-    if (!draft.responsable?.trim()) return toast.error("Responsable es obligatorio");
+    // Validaciones mínimas
     if (!draft.beneficiario?.doc?.trim()) return toast.error("Documento del beneficiario es obligatorio");
     if (!draft.beneficiario?.nombre?.trim()) return toast.error("Nombre del beneficiario es obligatorio");
     if (!draft.items?.length) return toast.error("Debes agregar al menos 1 ítem");
 
+    // ✅ si es creación, exigimos sesión para guardar responsableUserId
+    const isNew = !(draft.id && draft.id > 0);
+    if (isNew && (!me || !me.id)) {
+      return toast.error("No hay sesión activa para asignar responsable. Inicia sesión de nuevo.");
+    }
+
     const payload: any = {
       comprobante: draft.comprobante || undefined,
       fecha: draft.fecha,
-      responsable: draft.responsable,
       estado: draft.estado,
       kit: draft.kit || undefined,
-      beneficiario: draft.beneficiario, // incluye tipo_doc opcional
+      beneficiario: draft.beneficiario,
       direccion: draft.direccion || undefined,
       items: draft.items,
       observaciones: draft.observaciones || undefined,
       adjuntos: draft.adjuntos ?? [],
     };
 
-    const saved = draft.id && draft.id > 0 ? await updateEntrega(draft.id, payload) : await createEntrega(payload);
+    // ✅ solo en CREATE enviamos responsable + responsableUserId
+    if (isNew && me) {
+      payload.responsable = me.nombre;
+      payload.responsableUserId = me.id;
+    }
+
+    const saved = isNew ? await createEntrega(payload) : await updateEntrega(draft.id!, payload);
     if (!saved) return;
 
-    setDraft(saved);
+    setDraft(saved as any);
     setOpen(false);
     await reload();
 
@@ -443,7 +548,8 @@ export default function EntregasPage() {
         (t) => (
           <div className="flex items-center gap-3">
             <div className="text-sm">
-              Guardado ✅ <span className="text-slate-500">¿Deseas imprimir el comprobante?</span>
+              Guardado ✅{" "}
+              <span className="text-slate-500">¿Deseas imprimir el comprobante?</span>
             </div>
             <button
               onClick={() => {
@@ -465,41 +571,34 @@ export default function EntregasPage() {
   };
 
   const cambiarEstado = async (row: Entrega, est: Estado) => {
-    const saved = await updateEntrega(row.id, { estado: est });
+    const saved = await updateEntrega(row.id, { estado: est } as any);
     if (!saved) return;
     setRows((prev) => prev.map((x) => (x.id === row.id ? saved : x)));
   };
 
   const imprimir = (row: Entrega) => {
-
     if (!row.items || row.items.length === 0) {
       toast.error("No puedes imprimir: la entrega no tiene ítems.");
       return;
-    }   
-
+    }
     if (row.estado !== "Entregado") {
       toast.error('Solo puedes imprimir cuando el estado sea "Entregado".');
       return;
     }
-    
+
     try {
       const html = renderComprobanteHtml(row);
 
-      // 1) Abrimos ventana
-      const w = window.open("", "_blank"); // ✅ sin noopener/noreferrer (Brave a veces molesta)
+      const w = window.open("", "_blank");
       if (!w) {
         toast.error("El navegador bloqueó la ventana. Permite pop-ups.");
         return;
       }
 
-      // 2) Método recomendado: Blob URL (más estable)
       const blob = new Blob([html], { type: "text/html;charset=utf-8" });
       const url = URL.createObjectURL(blob);
-
-      // Navegamos la ventana al blob
       w.location.href = url;
 
-      // imprimimos cuando cargue
       const doPrint = () => {
         try {
           w.focus();
@@ -509,11 +608,9 @@ export default function EntregasPage() {
 
       w.onload = () => {
         setTimeout(doPrint, 200);
-        // limpia URL
         setTimeout(() => URL.revokeObjectURL(url), 1500);
       };
 
-      // 3) Fallback: si por algo no carga, escribimos directo
       setTimeout(() => {
         try {
           if (w.document?.readyState === "complete") return;
@@ -524,7 +621,6 @@ export default function EntregasPage() {
         } catch {}
       }, 800);
 
-      // opcional: cerrar al terminar
       w.onafterprint = () => {
         try {
           w.close();
@@ -578,14 +674,20 @@ export default function EntregasPage() {
                 <Select value={estado} onChange={(e) => setEstado(e.target.value as Estado | "")}>
                   <option value="">Estado: Todos</option>
                   {(["Pendiente", "Parcial", "Entregado"] as Estado[]).map((s) => (
-                    <option key={s} value={s}>{s}</option>
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
                   ))}
                 </Select>
                 <Input type="date" value={r1} onChange={(e) => setR1(e.target.value)} />
                 <Input type="date" value={r2} onChange={(e) => setR2(e.target.value)} />
               </div>
-              <Button variant="outline" onClick={exportCSV}><FileDown size={16} /> Exportar</Button>
-              <Button onClick={nueva}><Plus size={16} /> Nueva entrega</Button>
+              <Button variant="outline" onClick={exportCSV}>
+                <FileDown size={16} /> Exportar
+              </Button>
+              <Button onClick={nueva}>
+                <Plus size={16} /> Nueva entrega
+              </Button>
             </>
           }
         >
@@ -625,41 +727,65 @@ export default function EntregasPage() {
               </thead>
               <tbody>
                 {loading && (
-                  <tr><td colSpan={7} className="py-6 text-center text-slate-500">Cargando…</td></tr>
-                )}
-
-                {!loading && filtered.map((r) => (
-                  <tr key={r.id} className="border-b border-[var(--subtle)]/70">
-                    <td className="py-2 pl-4 pr-3 font-medium">{r.comprobante}</td>
-                    <td className="px-3 py-2">{r.fecha}</td>
-                    <td className="px-3 py-2">
-                      {r.beneficiario.nombre} <span className="text-slate-500">({r.beneficiario.doc || "s/d"})</span>
-                    </td>
-                    <td className="px-3 py-2">
-                      {r.estado === "Entregado" ? (
-                        <Badge tone="emerald"><CheckCircle2 className="mr-1" size={12} /> Entregado</Badge>
-                      ) : r.estado === "Parcial" ? (
-                        <Badge tone="amber">Parcial</Badge>
-                      ) : (
-                        <Badge tone="slate">Pendiente</Badge>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">{r.responsable || "—"}</td>
-                    <td className="px-3 py-2">{r.items.length}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button variant="outline" onClick={() => editar(r)}><Pencil size={14} /> Detalle</Button>
-                        <Select value={r.estado} onChange={(e) => cambiarEstado(r, e.target.value as Estado)} className="w-32">
-                          {(["Pendiente","Parcial","Entregado"] as Estado[]).map((s) => <option key={s} value={s}>{s}</option>)}
-                        </Select>
-                        <Button variant="ghost" onClick={() => imprimir(r)}><Printer size={14} /> Imprimir</Button>
-                      </div>
+                  <tr>
+                    <td colSpan={7} className="py-6 text-center text-slate-500">
+                      Cargando…
                     </td>
                   </tr>
-                ))}
+                )}
+
+                {!loading &&
+                  filtered.map((r) => (
+                    <tr key={r.id} className="border-b border-[var(--subtle)]/70">
+                      <td className="py-2 pl-4 pr-3 font-medium">{r.comprobante}</td>
+                      <td className="px-3 py-2">{r.fecha}</td>
+                      <td className="px-3 py-2">
+                        {r.beneficiario.nombre}{" "}
+                        <span className="text-slate-500">({r.beneficiario.doc || "s/d"})</span>
+                      </td>
+                      <td className="px-3 py-2">
+                        {r.estado === "Entregado" ? (
+                          <Badge tone="emerald">
+                            <CheckCircle2 className="mr-1" size={12} /> Entregado
+                          </Badge>
+                        ) : r.estado === "Parcial" ? (
+                          <Badge tone="amber">Parcial</Badge>
+                        ) : (
+                          <Badge tone="slate">Pendiente</Badge>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">{r.responsable || "—"}</td>
+                      <td className="px-3 py-2">{r.items.length}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button variant="outline" onClick={() => editar(r)}>
+                            <Pencil size={14} /> Detalle
+                          </Button>
+                          <Select
+                            value={r.estado}
+                            onChange={(e) => cambiarEstado(r, e.target.value as Estado)}
+                            className="w-32"
+                          >
+                            {(["Pendiente", "Parcial", "Entregado"] as Estado[]).map((s) => (
+                              <option key={s} value={s}>
+                                {s}
+                              </option>
+                            ))}
+                          </Select>
+                          <Button variant="ghost" onClick={() => imprimir(r)}>
+                            <Printer size={14} /> Imprimir
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
 
                 {!loading && filtered.length === 0 && (
-                  <tr><td colSpan={7} className="py-6 text-center text-slate-500">Sin resultados.</td></tr>
+                  <tr>
+                    <td colSpan={7} className="py-6 text-center text-slate-500">
+                      Sin resultados.
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
@@ -667,12 +793,20 @@ export default function EntregasPage() {
         </Section>
       </div>
 
-      <EntregaModal open={open} setOpen={setOpen} draft={draft} setDraft={setDraft} onSave={guardar} onPrint={imprimir} />
+      <EntregaModal
+        open={open}
+        setOpen={setOpen}
+        draft={draft}
+        setDraft={setDraft}
+        onSave={guardar}
+        onPrint={imprimir}
+        sessionUser={me}
+      />
     </DashboardShell>
   );
 }
 
-/* ============ Modal de Entrega (con Buscar Beneficiario) ============ */
+/* ============ Modal ============ */
 function EntregaModal({
   open,
   setOpen,
@@ -680,13 +814,15 @@ function EntregaModal({
   setDraft,
   onSave,
   onPrint,
+  sessionUser,
 }: {
   open: boolean;
   setOpen: (v: boolean) => void;
-  draft: Entrega | null;
-  setDraft: (d: Entrega | null) => void;
+  draft: EntregaDraft | null;
+  setDraft: (d: EntregaDraft | null) => void;
   onSave: () => void;
   onPrint: (row: Entrega) => void;
+  sessionUser: SessionUser | null;
 }) {
   const [benefLoading, setBenefLoading] = useState(false);
 
@@ -706,7 +842,8 @@ function EntregaModal({
 
   const rmItem = (i: number) => setDraft({ ...draft, items: draft.items.filter((_, idx) => idx !== i) });
 
-  const onTemplate = (k: string) => setDraft({ ...draft, kit: k, items: JSON.parse(JSON.stringify(TEMPLATES[k] || [])) });
+  const onTemplate = (k: string) =>
+    setDraft({ ...draft, kit: k, items: JSON.parse(JSON.stringify(TEMPLATES[k] || [])) });
 
   const onAdj = (files: FileList | null) => {
     if (!files) return;
@@ -714,12 +851,12 @@ function EntregaModal({
     setDraft({ ...draft, adjuntos: [...draft.adjuntos, ...arr] });
   };
 
-  const rmAdj = (name: string) => setDraft({ ...draft, adjuntos: draft.adjuntos.filter((a) => a.name !== name) });
+  const rmAdj = (name: string) =>
+    setDraft({ ...draft, adjuntos: draft.adjuntos.filter((a) => a.name !== name) });
 
   const buscarBeneficiario = async () => {
     const tipo = (draft.beneficiario?.tipo_doc ?? "CC") as TipoDoc;
     const doc = (draft.beneficiario?.doc ?? "").trim();
-
     if (!doc) return toast.error("Ingrese el documento para buscar.");
 
     try {
@@ -752,7 +889,6 @@ function EntregaModal({
           doc: data.num_doc ?? doc,
           nombre: nombre || draft.beneficiario.nombre,
         },
-        // si trae dirección y está vacía, la ponemos
         direccion: (draft.direccion?.trim() ? draft.direccion : (data.direccion ?? "")) || "",
       });
 
@@ -764,7 +900,15 @@ function EntregaModal({
     }
   };
 
-  const valid = draft.beneficiario.nombre && draft.beneficiario.doc && draft.items.length > 0 && draft.responsable.trim();
+  // ✅ responsable NO se edita, pero debe existir al crear
+  const isNew = !(draft.id && draft.id > 0);
+  const hasResponsable = !isNew || (!!sessionUser?.id && !!sessionUser?.nombre);
+
+  const valid =
+    hasResponsable &&
+    !!draft.beneficiario?.nombre?.trim() &&
+    !!draft.beneficiario?.doc?.trim() &&
+    (draft.items?.length ?? 0) > 0;
 
   return (
     <Modal
@@ -791,13 +935,13 @@ function EntregaModal({
                 : "Imprimir comprobante"
             }
           >
-              <Printer size={16} /> Imprimir
-            </Button>
+            <Printer size={16} /> Imprimir
+          </Button>
 
-            <Button type="button" onClick={onSave} disabled={!valid}>
-              <ClipboardCheck size={16} /> Guardar
-            </Button>
-          </>
+          <Button type="button" onClick={onSave} disabled={!valid}>
+            <ClipboardCheck size={16} /> Guardar
+          </Button>
+        </>
       }
     >
       <div className="grid gap-6 lg:grid-cols-3">
@@ -806,18 +950,42 @@ function EntregaModal({
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <label className="grid gap-1 text-sm">
               <span className="text-slate-700">Fecha</span>
-              <Input type="date" value={draft.fecha} onChange={(e) => setDraft({ ...draft, fecha: e.target.value })} />
+              <Input
+                type="date"
+                value={draft.fecha}
+                onChange={(e) => setDraft({ ...draft, fecha: e.target.value })}
+              />
             </label>
 
+            {/* ✅ Responsable fijo: gris, no editable */}
             <label className="grid gap-1 text-sm">
               <span className="text-slate-700">Responsable</span>
-              <Input value={draft.responsable} onChange={(e) => setDraft({ ...draft, responsable: e.target.value })} placeholder="Bodega / Usuario" />
+              <Input
+                value={isNew ? (sessionUser?.nombre ?? "—") : (draft.responsable ?? "—")}
+                readOnly
+                disabled
+                className="cursor-not-allowed bg-slate-100 text-slate-500"
+              />
+              {isNew && !sessionUser?.id && (
+                <div className="text-xs text-rose-600">
+                  No hay sesión. Inicia sesión para crear entregas.
+                </div>
+              )}
             </label>
 
             <label className="grid gap-1 text-sm">
               <span className="text-slate-700">Estado</span>
-              <Select value={draft.estado} onChange={(e) => setDraft({ ...draft, estado: e.target.value as Estado })}>
-                {(["Pendiente","Parcial","Entregado"] as Estado[]).map((s) => <option key={s} value={s}>{s}</option>)}
+              <Select
+                value={draft.estado}
+                onChange={(e) =>
+                  setDraft({ ...draft, estado: e.target.value as Estado })
+                }
+              >
+                {(["Pendiente", "Parcial", "Entregado"] as Estado[]).map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
               </Select>
             </label>
 
@@ -826,10 +994,22 @@ function EntregaModal({
               <span className="text-slate-700">Tipo doc</span>
               <Select
                 value={(draft.beneficiario?.tipo_doc ?? "CC") as TipoDoc}
-                onChange={(e) => setDraft({ ...draft, beneficiario: { ...draft.beneficiario, tipo_doc: e.target.value as TipoDoc } })}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    beneficiario: {
+                      ...draft.beneficiario,
+                      tipo_doc: e.target.value as TipoDoc,
+                    },
+                  })
+                }
               >
-                {(["CC","TI","CE","RC","PA","PEP","PPT","NIT","OTRO"] as TipoDoc[]).map((t) => (
-                  <option key={t} value={t}>{t}</option>
+                {(
+                  ["CC", "TI", "CE", "RC", "PA", "PEP", "PPT", "NIT", "OTRO"] as TipoDoc[]
+                ).map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
                 ))}
               </Select>
             </label>
@@ -838,14 +1018,24 @@ function EntregaModal({
               <span className="text-slate-700">Documento</span>
               <Input
                 value={draft.beneficiario.doc}
-                onChange={(e) => setDraft({ ...draft, beneficiario: { ...draft.beneficiario, doc: e.target.value } })}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    beneficiario: { ...draft.beneficiario, doc: e.target.value },
+                  })
+                }
                 placeholder="Número"
               />
             </label>
 
             <div className="grid gap-1 text-sm">
               <span className="text-slate-700">Buscar</span>
-              <Button variant="outline" type="button" onClick={buscarBeneficiario} disabled={benefLoading}>
+              <Button
+                variant="outline"
+                type="button"
+                onClick={buscarBeneficiario}
+                disabled={benefLoading}
+              >
                 <Search size={16} /> {benefLoading ? "Buscando..." : "Buscar beneficiario"}
               </Button>
             </div>
@@ -854,21 +1044,37 @@ function EntregaModal({
               <span className="text-slate-700">Beneficiario (Nombre)</span>
               <Input
                 value={draft.beneficiario.nombre}
-                onChange={(e) => setDraft({ ...draft, beneficiario: { ...draft.beneficiario, nombre: e.target.value } })}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    beneficiario: {
+                      ...draft.beneficiario,
+                      nombre: e.target.value,
+                    },
+                  })
+                }
                 placeholder="Nombre completo"
               />
             </label>
 
             <label className="grid gap-1 text-sm md:col-span-2">
               <span className="text-slate-700">Dirección (opcional)</span>
-              <Input value={draft.direccion} onChange={(e) => setDraft({ ...draft, direccion: e.target.value })} placeholder="Dirección de entrega" />
+              <Input
+                value={draft.direccion}
+                onChange={(e) => setDraft({ ...draft, direccion: e.target.value })}
+                placeholder="Dirección de entrega"
+              />
             </label>
 
             <label className="grid gap-1 text-sm">
               <span className="text-slate-700">Plantilla de kit</span>
               <Select value={draft.kit || ""} onChange={(e) => onTemplate(e.target.value)}>
                 <option value="">— Seleccionar —</option>
-                {Object.keys(TEMPLATES).map((k) => <option key={k} value={k}>{k}</option>)}
+                {Object.keys(TEMPLATES).map((k) => (
+                  <option key={k} value={k}>
+                    {k}
+                  </option>
+                ))}
               </Select>
             </label>
           </div>
@@ -879,8 +1085,11 @@ function EntregaModal({
               <div className="flex items-center gap-2 text-sm font-semibold">
                 <Truck size={16} className="text-[var(--brand)]" /> Ítems del kit
               </div>
-              <Button variant="outline" type="button" onClick={addItem}><Plus size={16} /> Agregar</Button>
+              <Button variant="outline" type="button" onClick={addItem}>
+                <Plus size={16} /> Agregar
+              </Button>
             </div>
+
             <div className="p-3 overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="text-slate-500 border-b border-[var(--subtle)]">
@@ -895,21 +1104,39 @@ function EntregaModal({
                   {draft.items.map((it, i) => (
                     <tr key={it.id} className="border-b border-[var(--subtle)]/60">
                       <td className="px-2 py-2">
-                        <Input value={it.nombre} onChange={(e) => setItem(i, { nombre: e.target.value })} placeholder="Nombre del producto" />
+                        <Input
+                          value={it.nombre}
+                          onChange={(e) => setItem(i, { nombre: e.target.value })}
+                          placeholder="Nombre del producto"
+                        />
                       </td>
                       <td className="px-2 py-2">
-                        <Input value={it.unidad} onChange={(e) => setItem(i, { unidad: e.target.value })} placeholder="UND/KG/L..." />
+                        <Input
+                          value={it.unidad}
+                          onChange={(e) => setItem(i, { unidad: e.target.value })}
+                          placeholder="UND/KG/L..."
+                        />
                       </td>
                       <td className="px-2 py-2">
-                        <Input type="number" value={it.cantidad} onChange={(e) => setItem(i, { cantidad: Number(e.target.value) })} />
+                        <Input
+                          type="number"
+                          value={it.cantidad}
+                          onChange={(e) => setItem(i, { cantidad: Number(e.target.value) })}
+                        />
                       </td>
                       <td className="px-2 py-2">
-                        <Button variant="ghost" type="button" onClick={() => rmItem(i)} title="Quitar"><Trash2 size={16} /></Button>
+                        <Button variant="ghost" type="button" onClick={() => rmItem(i)} title="Quitar">
+                          <Trash2 size={16} />
+                        </Button>
                       </td>
                     </tr>
                   ))}
                   {draft.items.length === 0 && (
-                    <tr><td colSpan={4} className="py-4 text-center text-slate-500">Sin ítems. Usa “Agregar”.</td></tr>
+                    <tr>
+                      <td colSpan={4} className="py-4 text-center text-slate-500">
+                        Sin ítems. Usa “Agregar”.
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>
@@ -918,7 +1145,12 @@ function EntregaModal({
 
           <label className="grid gap-1 text-sm">
             <span className="text-slate-700">Observaciones</span>
-            <Textarea rows={3} value={draft.observaciones || ""} onChange={(e) => setDraft({ ...draft, observaciones: e.target.value })} placeholder="Notas adicionales de la entrega…" />
+            <Textarea
+              rows={3}
+              value={draft.observaciones || ""}
+              onChange={(e) => setDraft({ ...draft, observaciones: e.target.value })}
+              placeholder="Notas adicionales de la entrega…"
+            />
           </label>
         </div>
 
@@ -945,7 +1177,9 @@ function EntregaModal({
                         <td className="px-2 py-2">{a.name}</td>
                         <td className="px-2 py-2">{(a.size / 1024).toFixed(1)} KB</td>
                         <td className="px-2 py-2">
-                          <Button variant="ghost" type="button" onClick={() => rmAdj(a.name)}><Trash2 size={14} /> Quitar</Button>
+                          <Button variant="ghost" type="button" onClick={() => rmAdj(a.name)}>
+                            <Trash2 size={14} /> Quitar
+                          </Button>
                         </td>
                       </tr>
                     ))}
@@ -953,14 +1187,18 @@ function EntregaModal({
                 </table>
               </div>
             )}
-            <div className="mt-2 text-xs text-slate-500">Ej.: Acta firmada, consentimiento, soporte de entrega, etc.</div>
+            <div className="mt-2 text-xs text-slate-500">
+              Ej.: Acta firmada, consentimiento, soporte de entrega, etc.
+            </div>
           </div>
 
           <div className="rounded border border-[var(--subtle)] bg-white p-3">
             <div className="flex items-center gap-2 mb-1 text-sm font-semibold">
               <Printer size={16} className="text-[var(--brand)]" /> Comprobante
             </div>
-            <p className="text-xs text-slate-600">Podrás imprimir el comprobante desde la tabla (acción “Imprimir”).</p>
+            <p className="text-xs text-slate-600">
+              Podrás imprimir el comprobante desde la tabla (acción “Imprimir”).
+            </p>
           </div>
         </div>
       </div>

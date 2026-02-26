@@ -42,10 +42,9 @@ function upper(v: any) {
 }
 
 function packAdjuntos(files: any, direccionEntrega?: string) {
-  const f = asArr(files).map((x) => ({
-    name: String(x?.name ?? x?.nombre ?? "").trim(),
-    size: Number(x?.size ?? 0),
-  })).filter((x) => x.name);
+  const f = asArr(files)
+    .map((x) => ({ name: String(x?.name ?? x?.nombre ?? "").trim(), size: Number(x?.size ?? 0) }))
+    .filter((x) => x.name);
 
   if (direccionEntrega && String(direccionEntrega).trim()) {
     return { files: f, meta: { direccionEntrega: String(direccionEntrega).trim() } } as Prisma.InputJsonValue;
@@ -77,14 +76,11 @@ async function nextComprobante() {
 
 function splitNombre(full: string) {
   const parts = String(full ?? "").trim().split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) {
-    return { nombres: parts.slice(0, -1).join(" "), apellidos: parts.slice(-1).join(" ") };
-  }
+  if (parts.length >= 2) return { nombres: parts.slice(0, -1).join(" "), apellidos: parts.slice(-1).join(" ") };
   return { nombres: parts[0] ?? full ?? "", apellidos: "N/A" };
 }
 
 async function resolveBeneficiario(body: any): Promise<{ id: number | null; doc?: string; nombre?: string; direccion?: string }> {
-  // 1) por beneficiarioId (si viene)
   const bid = toInt(body?.beneficiarioId ?? body?.beneficiario_id);
   if (bid) {
     const b = await prisma.beneficiario.findUnique({
@@ -92,16 +88,10 @@ async function resolveBeneficiario(body: any): Promise<{ id: number | null; doc?
       select: { id: true, doc: true, nombres: true, apellidos: true, direccion: true },
     });
     if (b) {
-      return {
-        id: b.id,
-        doc: b.doc,
-        nombre: `${b.nombres} ${b.apellidos}`.trim(),
-        direccion: b.direccion ?? undefined,
-      };
+      return { id: b.id, doc: b.doc, nombre: `${b.nombres} ${b.apellidos}`.trim(), direccion: b.direccion ?? undefined };
     }
   }
 
-  // 2) por doc del objeto beneficiario (del TSX)
   const benef = asObj(body?.beneficiario);
   const doc = String(benef?.doc ?? body?.doc ?? "").trim();
   if (!doc) return { id: null };
@@ -112,24 +102,17 @@ async function resolveBeneficiario(body: any): Promise<{ id: number | null; doc?
   });
 
   if (found) {
-    return {
-      id: found.id,
-      doc: found.doc,
-      nombre: `${found.nombres} ${found.apellidos}`.trim(),
-      direccion: found.direccion ?? undefined,
-    };
+    return { id: found.id, doc: found.doc, nombre: `${found.nombres} ${found.apellidos}`.trim(), direccion: found.direccion ?? undefined };
   }
 
-  // 3) si no existe: lo creamos mínimo
   const tipoDoc = (benef?.tipo_doc ?? body?.tipo_doc ?? "CC") as TipoDocumento;
   const nombreFull = String(benef?.nombre ?? body?.nombre ?? "").trim();
   const { nombres, apellidos } = splitNombre(nombreFull || doc);
-
   const direccion = String(body?.direccion ?? "").trim() || undefined;
 
   const created = await prisma.beneficiario.create({
     data: {
-      tipoDoc: tipoDoc,
+      tipoDoc,
       doc,
       nombres: upper(nombres),
       apellidos: upper(apellidos),
@@ -139,12 +122,7 @@ async function resolveBeneficiario(body: any): Promise<{ id: number | null; doc?
     select: { id: true, doc: true, nombres: true, apellidos: true, direccion: true },
   });
 
-  return {
-    id: created.id,
-    doc: created.doc,
-    nombre: `${created.nombres} ${created.apellidos}`.trim(),
-    direccion: created.direccion ?? undefined,
-  };
+  return { id: created.id, doc: created.doc, nombre: `${created.nombres} ${created.apellidos}`.trim(), direccion: created.direccion ?? undefined };
 }
 
 function toUi(row: any) {
@@ -158,13 +136,23 @@ function toUi(row: any) {
 
   const unpack = unpackAdjuntos(row.adjuntos);
 
+  const responsableNombre =
+    row.responsableUser?.nombre?.trim() ||
+    row.responsableUser?.email?.trim() ||
+    row.responsable ||
+    "";
+
   return {
     id: row.id,
     comprobante: row.comprobante,
     fecha: toISO(row.fecha),
     beneficiario: { doc: b.doc, nombre: b.nombre },
     direccion: unpack.direccionEntrega ?? b.direccion ?? undefined,
-    responsable: row.responsable ?? "",
+
+    // ✅ ahora viene con id + nombre
+    responsableUserId: row.responsableUserId ?? null,
+    responsable: responsableNombre,
+
     estado: estadoToUi[row.estado] ?? "Pendiente",
     kit: row.kit ?? "",
     items: asArr(row.items),
@@ -178,7 +166,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
 
   const q = (searchParams.get("q") ?? "").trim();
-  const estado = (searchParams.get("estado") ?? "").trim(); // Pendiente/Parcial/Entregado
+  const estado = (searchParams.get("estado") ?? "").trim();
   const from = (searchParams.get("from") ?? "").trim();
   const to = (searchParams.get("to") ?? "").trim();
 
@@ -202,27 +190,9 @@ export async function GET(req: NextRequest) {
       { comprobante: { contains: q, mode: "insensitive" } },
       { responsable: { contains: q, mode: "insensitive" } },
       { kit: { contains: q, mode: "insensitive" } },
-      {
-        beneficiario: {
-          is: {
-            doc: { contains: q, mode: "insensitive" },
-          },
-        },
-      },
-      {
-        beneficiario: {
-          is: {
-            nombres: { contains: q, mode: "insensitive" },
-          },
-        },
-      },
-      {
-        beneficiario: {
-          is: {
-            apellidos: { contains: q, mode: "insensitive" },
-          },
-        },
-      },
+      { beneficiario: { is: { doc: { contains: q, mode: "insensitive" } } } },
+      { beneficiario: { is: { nombres: { contains: q, mode: "insensitive" } } } },
+      { beneficiario: { is: { apellidos: { contains: q, mode: "insensitive" } } } },
     ];
   }
 
@@ -233,6 +203,8 @@ export async function GET(req: NextRequest) {
       orderBy: [{ fecha: "desc" }, { comprobante: "desc" }],
       include: {
         beneficiario: { select: { id: true, doc: true, nombres: true, apellidos: true, direccion: true } },
+        // ✅ nuevo
+        responsableUser: { select: { id: true, nombre: true, email: true } },
       },
       skip,
       take: pageSize,
@@ -253,39 +225,61 @@ export async function POST(req: NextRequest) {
     const comprobante = String(body?.comprobante ?? "").trim() || (await nextComprobante());
     const fecha = toDateOrNull(body?.fecha) ?? new Date();
 
-    const responsable = upper(body?.responsable ?? "");
+    // ✅ responsable desde userId
+    const responsableUserId = toInt(body?.responsableUserId);
+    if (!responsableUserId) {
+      return NextResponse.json({ error: "responsableUserId es requerido." }, { status: 400 });
+    }
+
+    const responsableUser = await prisma.user.findUnique({
+      where: { id: responsableUserId },
+      select: { id: true, nombre: true, email: true, activo: true },
+    });
+
+    if (!responsableUser) {
+      return NextResponse.json({ error: "Responsable no existe." }, { status: 400 });
+    }
+    if (!responsableUser.activo) {
+      return NextResponse.json({ error: "Responsable inactivo." }, { status: 403 });
+    }
+
+    const responsableNombre = (responsableUser.nombre ?? responsableUser.email ?? "").trim();
+    if (!responsableNombre) {
+      return NextResponse.json({ error: "El responsable no tiene nombre/email." }, { status: 400 });
+    }
+
     const estDb = estadoToDb[String(body?.estado ?? "Pendiente")] ?? "PENDIENTE";
     const kit = body?.kit ? upper(body.kit) : null;
 
-    const items = asArr(body?.items).map((it) => ({
-      id: String(it?.id ?? crypto.randomUUID()),
-      nombre: upper(it?.nombre ?? ""),
-      unidad: upper(it?.unidad ?? "UND"),
-      cantidad: Number(it?.cantidad ?? 0),
-    })).filter((x) => x.nombre && x.cantidad > 0);
+    const items = asArr(body?.items)
+      .map((it) => ({
+        id: String(it?.id ?? crypto.randomUUID()),
+        nombre: upper(it?.nombre ?? ""),
+        unidad: upper(it?.unidad ?? "UND"),
+        cantidad: Number(it?.cantidad ?? 0),
+      }))
+      .filter((x) => x.nombre && x.cantidad > 0);
 
     if (!items.length) {
       return NextResponse.json({ error: "Debe incluir al menos 1 ítem con cantidad > 0." }, { status: 400 });
     }
-    if (!responsable) {
-      return NextResponse.json({ error: "Responsable es requerido." }, { status: 400 });
-    }
 
-    // Beneficiario: por beneficiarioId o por beneficiario.doc
     const b = await resolveBeneficiario(body);
     const beneficiarioId = b.id ?? null;
 
     const observaciones = body?.observaciones ? upper(body.observaciones) : null;
-
     const direccionEntrega = String(body?.direccion ?? "").trim() || undefined;
-
     const adjuntos = packAdjuntos(body?.adjuntos, direccionEntrega);
 
     const created = await prisma.entrega.create({
       data: {
         comprobante,
         fecha,
-        responsable,
+
+        // ✅ guardamos id + nombre (string)
+        responsableUserId: responsableUser.id,
+        responsable: responsableNombre, // (si quieres en mayúscula: upper(responsableNombre))
+
         estado: estDb,
         kit,
         items: items as any,
@@ -295,6 +289,7 @@ export async function POST(req: NextRequest) {
       },
       include: {
         beneficiario: { select: { id: true, doc: true, nombres: true, apellidos: true, direccion: true } },
+        responsableUser: { select: { id: true, nombre: true, email: true } },
       },
     });
 

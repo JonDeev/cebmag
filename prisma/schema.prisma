@@ -218,6 +218,8 @@ model User {
 
   roles         UserRole[]
   pqrsAsignados PQRS[] @relation("PQRSResponsable")
+
+  entregasResponsable Entrega[] @relation("EntregaResponsable")
 }
 
 model Role {
@@ -368,10 +370,15 @@ model Respuesta {
 }
 
 model Entrega {
-  id            Int          @id @default(autoincrement())
-  comprobante   String       @unique
-  fecha         DateTime
-  responsable   String
+  id              Int           @id @default(autoincrement())
+  comprobante     String        @unique
+  fecha           DateTime
+  responsable     String
+
+  // ✅ NUEVO
+  responsableUserId Int?
+  responsableUser   User? @relation("EntregaResponsable", fields: [responsableUserId], references: [id], onDelete: SetNull)
+
   estado        EntregaEstado @default(PENDIENTE)
   kit           String?
   items         Json
@@ -386,6 +393,7 @@ model Entrega {
 
   @@index([estado])
   @@index([fecha])
+  @@index([responsableUserId])
 }
 
 model Actividad {
