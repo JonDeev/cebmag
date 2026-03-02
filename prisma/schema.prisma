@@ -375,13 +375,19 @@ model Entrega {
   fecha           DateTime
   responsable     String
 
-  // ✅ NUEVO
   responsableUserId Int?
   responsableUser   User? @relation("EntregaResponsable", fields: [responsableUserId], references: [id], onDelete: SetNull)
 
   estado        EntregaEstado @default(PENDIENTE)
+
+  // ✅ snapshot (histórico) - se queda igual
   kit           String?
   items         Json
+
+  // ✅ referencia a plantilla (para autollenar / trazabilidad)
+  kitId         Int?
+  kitRef        Kit? @relation(fields: [kitId], references: [id], onDelete: SetNull)
+
   observaciones String?
   adjuntos      Json?
 
@@ -394,6 +400,36 @@ model Entrega {
   @@index([estado])
   @@index([fecha])
   @@index([responsableUserId])
+  @@index([kitId])
+}
+
+model Kit {
+  id          Int      @id @default(autoincrement())
+  nombre      String   @unique
+  descripcion String?
+  activo      Boolean  @default(true)
+
+  items       KitItem[]
+
+  // ✅ lado opuesto para la relación con Entrega
+  entregas    Entrega[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model KitItem {
+  id       Int     @id @default(autoincrement())
+  kitId    Int
+  nombre   String
+  unidad   String? // "und", "paq", "ml", etc.
+  cantidad Int     @default(1)
+  opcional Boolean @default(false)
+  orden    Int     @default(0)
+
+  kit      Kit     @relation(fields: [kitId], references: [id], onDelete: Cascade)
+
+  @@index([kitId])
 }
 
 model Actividad {
