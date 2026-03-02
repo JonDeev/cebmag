@@ -454,7 +454,7 @@ export default function KitsManager() {
                           className="border-rose-200 text-rose-700 hover:bg-rose-50"
                           title="Desactivar (soft delete)"
                         >
-                          Delete
+                          Eliminar
                         </Button>
                       </div>
                     </td>
