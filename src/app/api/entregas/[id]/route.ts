@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma, EntregaEstado, TipoDocumento } from "@prisma/client";
-import crypto from "crypto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -120,10 +119,13 @@ function toUi(row: any) {
     direccion: unpack.direccionEntrega ?? b.direccion ?? undefined,
 
     responsable: row.responsable ?? "",
-    // ✅ si lo tienes en schema, útil para auditoría/UI
     responsableUserId: typeof row.responsableUserId === "number" ? row.responsableUserId : null,
 
     estado: estadoToUi[row.estado] ?? "Pendiente",
+
+    // ✅ devolver kitId para que el select se mantenga
+    kitId: typeof row.kitId === "number" ? row.kitId : null,
+
     kit: row.kit ?? "",
     items: asArr(row.items),
     observaciones: row.observaciones ?? "",
@@ -176,9 +178,6 @@ export async function PATCH(req: NextRequest, ctx: { params: any }) {
 
     if (typeof body.fecha !== "undefined") patch.fecha = toDateOrNull(body.fecha) ?? undefined;
 
-    // ❌ IMPORTANTE: NO permitir actualizar responsable desde PATCH
-    // if (typeof body.responsable !== "undefined") patch.responsable = upper(body.responsable) as any;
-
     // ✅ responsableUserId: solo permitir setear si está null (para que quede fijo)
     if (typeof body.responsableUserId !== "undefined") {
       const rid = toInt(body.responsableUserId);
@@ -192,16 +191,27 @@ export async function PATCH(req: NextRequest, ctx: { params: any }) {
       if (est) patch.estado = est;
     }
 
+    // ✅ kitId (relación)
+    if (typeof body.kitId !== "undefined") {
+      patch.kitId = toInt(body.kitId) as any;
+    }
+
+    // ✅ kit (snapshot)
     if (typeof body.kit !== "undefined") patch.kit = body.kit ? upper(body.kit) : null;
 
+    // ✅ AQUÍ QUITAMOS UUID: no generamos id
     if (typeof body.items !== "undefined") {
       const items = asArr(body.items)
-        .map((it) => ({
-          id: String(it?.id ?? crypto.randomUUID()),
-          nombre: upper(it?.nombre ?? ""),
-          unidad: upper(it?.unidad ?? "UND"),
-          cantidad: Number(it?.cantidad ?? 0),
-        }))
+        .map((it) => {
+          const obj: any = {
+            nombre: upper(it?.nombre ?? ""),
+            unidad: upper(it?.unidad ?? "UND"),
+            cantidad: Number(it?.cantidad ?? 0),
+          };
+          // si viene id desde el cliente, lo dejamos
+          if (it?.id) obj.id = String(it.id);
+          return obj;
+        })
         .filter((x) => x.nombre && x.cantidad > 0);
 
       patch.items = items as any;

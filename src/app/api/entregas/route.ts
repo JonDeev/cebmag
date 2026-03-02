@@ -149,11 +149,14 @@ function toUi(row: any) {
     beneficiario: { doc: b.doc, nombre: b.nombre },
     direccion: unpack.direccionEntrega ?? b.direccion ?? undefined,
 
-    // ✅ ahora viene con id + nombre
     responsableUserId: row.responsableUserId ?? null,
     responsable: responsableNombre,
 
     estado: estadoToUi[row.estado] ?? "Pendiente",
+
+    // ✅ devolver kitId también (para que el select quede seleccionado)
+    kitId: row.kitId ?? null,
+
     kit: row.kit ?? "",
     items: asArr(row.items),
     observaciones: row.observaciones ?? "",
@@ -203,7 +206,6 @@ export async function GET(req: NextRequest) {
       orderBy: [{ fecha: "desc" }, { comprobante: "desc" }],
       include: {
         beneficiario: { select: { id: true, doc: true, nombres: true, apellidos: true, direccion: true } },
-        // ✅ nuevo
         responsableUser: { select: { id: true, nombre: true, email: true } },
       },
       skip,
@@ -249,15 +251,23 @@ export async function POST(req: NextRequest) {
     }
 
     const estDb = estadoToDb[String(body?.estado ?? "Pendiente")] ?? "PENDIENTE";
+
+    // ✅ kitId (relación) + kit (snapshot)
+    const kitId = toInt(body?.kitId);
     const kit = body?.kit ? upper(body.kit) : null;
 
+    // ✅ AQUÍ QUITAMOS EL UUID: NO generamos id en servidor
     const items = asArr(body?.items)
-      .map((it) => ({
-        id: String(it?.id ?? crypto.randomUUID()),
-        nombre: upper(it?.nombre ?? ""),
-        unidad: upper(it?.unidad ?? "UND"),
-        cantidad: Number(it?.cantidad ?? 0),
-      }))
+      .map((it) => {
+        const obj: any = {
+          nombre: upper(it?.nombre ?? ""),
+          unidad: upper(it?.unidad ?? "UND"),
+          cantidad: Number(it?.cantidad ?? 0),
+        };
+        // si viene id desde el cliente, lo dejamos (pero NO lo generamos)
+        if (it?.id) obj.id = String(it.id);
+        return obj;
+      })
       .filter((x) => x.nombre && x.cantidad > 0);
 
     if (!items.length) {
@@ -276,11 +286,14 @@ export async function POST(req: NextRequest) {
         comprobante,
         fecha,
 
-        // ✅ guardamos id + nombre (string)
         responsableUserId: responsableUser.id,
-        responsable: responsableNombre, // (si quieres en mayúscula: upper(responsableNombre))
+        responsable: responsableNombre,
 
         estado: estDb,
+
+        // ✅ guarda la relación (si tu schema ya tiene kitId)
+        kitId: kitId ?? null,
+
         kit,
         items: items as any,
         observaciones,

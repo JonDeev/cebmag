@@ -217,6 +217,7 @@ async function loadSessionUser(): Promise<SessionUser | null> {
     const res = await fetch(`/api/auth/me?ts=${Date.now()}`, {
       cache: "no-store",
       headers: { "cache-control": "no-cache", pragma: "no-cache" },
+      credentials: "include",
     });
     if (res.ok) {
       const data = await readJsonOrText(res);
@@ -234,24 +235,27 @@ async function loadSessionUser(): Promise<SessionUser | null> {
 /* ============ Utilidades ============ */
 const today = () => new Date().toISOString().slice(0, 10);
 
-const TEMPLATES: Record<string, Item[]> = {
-  "Kit Aseo": [
-    { id: crypto.randomUUID(), nombre: "JABÓN DE BAÑO", unidad: "UND", cantidad: 2 },
-    { id: crypto.randomUUID(), nombre: "SHAMPOO 400ML", unidad: "UND", cantidad: 1 },
-    { id: crypto.randomUUID(), nombre: "CREMA DENTAL", unidad: "UND", cantidad: 1 },
-  ],
-  "Kit Alimentario": [
-    { id: crypto.randomUUID(), nombre: "ARROZ 1KG", unidad: "KG", cantidad: 2 },
-    { id: crypto.randomUUID(), nombre: "LENTEJA 500G", unidad: "G", cantidad: 500 },
-    { id: crypto.randomUUID(), nombre: "ACEITE 1L", unidad: "L", cantidad: 1 },
-  ],
-  "Kit Adulto Mayor": [
-    { id: crypto.randomUUID(), nombre: "PAÑAL ADULTO", unidad: "UND", cantidad: 20 },
-    { id: crypto.randomUUID(), nombre: "TOALLAS HÚMEDAS", unidad: "PAQ", cantidad: 1 },
-  ],
+type KitApiItem = {
+  id: number;
+  nombre: string;
+  unidad?: string | null;
+  cantidad: number;
+  opcional: boolean;
+  orden: number;
 };
 
-type EntregaDraft = Entrega & { responsableUserId?: number | null };
+type KitApi = {
+  id: number;
+  nombre: string;
+  descripcion?: string | null;
+  activo: boolean;
+  items: KitApiItem[];
+};
+
+type EntregaDraft = Entrega & {
+  responsableUserId?: number | null;
+  kitId?: number | null; // ✅ nuevo
+};
 
 function emptyDraft(): EntregaDraft {
   return {
@@ -263,6 +267,7 @@ function emptyDraft(): EntregaDraft {
     responsable: "",
     responsableUserId: null,
     estado: "Pendiente",
+    kitId: null,
     kit: "",
     items: [],
     observaciones: "",
@@ -414,6 +419,15 @@ const renderComprobanteHtml = (r: Entrega) => {
 </html>`;
 };
 
+function toEntregaItemsFromKit(kit: KitApi): Item[] {
+  const sorted = [...(kit.items || [])].sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+  return sorted.map((it) => ({
+    nombre: String(it.nombre ?? "").trim(),
+    unidad: String(it.unidad ?? "UND").trim() || "UND",
+    cantidad: Number(it.cantidad ?? 1),
+  }));
+}
+
 /* ============ Página ============ */
 export default function EntregasPage() {
   const title = "Entregas de insumos/kits";
@@ -431,6 +445,29 @@ export default function EntregasPage() {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<EntregaDraft | null>(null);
 
+  // ✅ Kits (desde BD)
+  const [kits, setKits] = useState<KitApi[]>([]);
+  const [kitsLoading, setKitsLoading] = useState(false);
+
+  const loadKits = async () => {
+    setKitsLoading(true);
+    try {
+      const res = await fetch(`/api/kits?onlyActive=true&ts=${Date.now()}`, {
+        cache: "no-store",
+        credentials: "include",
+        headers: { "cache-control": "no-cache", pragma: "no-cache" },
+      });
+      if (!res.ok) throw new Error("No se pudo cargar kits");
+      const data = (await res.json()) as KitApi[];
+      setKits(Array.isArray(data) ? data : []);
+    } catch (e: any) {
+      toast.error(e?.message ?? "No se pudo cargar kits");
+      setKits([]);
+    } finally {
+      setKitsLoading(false);
+    }
+  };
+
   const reload = async () => {
     setLoading(true);
     try {
@@ -447,6 +484,7 @@ export default function EntregasPage() {
       setMe(u);
     })();
 
+    loadKits().catch(() => {});
     reload().catch(() => toast.error("No se pudo cargar entregas"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -490,7 +528,6 @@ export default function EntregasPage() {
       d.responsable = me.nombre;
       d.responsableUserId = me.id;
     } else {
-      // si no hay sesión, igual abre, pero avisamos
       toast.error("No pude leer el usuario de sesión. Re-inicia sesión.");
     }
 
@@ -499,8 +536,10 @@ export default function EntregasPage() {
   };
 
   const editar = (e: Entrega) => {
-    // al editar, NO pisamos responsable (solo mostramos el que ya tiene)
-    setDraft(JSON.parse(JSON.stringify(e)) as EntregaDraft);
+    const copy = JSON.parse(JSON.stringify(e)) as EntregaDraft;
+    if (copy.kitId === undefined) copy.kitId = null;
+    if (copy.responsableUserId === undefined) copy.responsableUserId = null;
+    setDraft(copy);
     setOpen(true);
   };
 
@@ -522,10 +561,18 @@ export default function EntregasPage() {
       comprobante: draft.comprobante || undefined,
       fecha: draft.fecha,
       estado: draft.estado,
+
+      // ✅ snapshot + relación
+      kitId: draft.kitId ?? null,
       kit: draft.kit || undefined,
+
       beneficiario: draft.beneficiario,
       direccion: draft.direccion || undefined,
-      items: draft.items,
+      items: (draft.items || []).map((it: any) => ({
+        nombre: it.nombre,
+        unidad: it.unidad,
+        cantidad: it.cantidad,
+      })),
       observaciones: draft.observaciones || undefined,
       adjuntos: draft.adjuntos ?? [],
     };
@@ -801,6 +848,9 @@ export default function EntregasPage() {
         onSave={guardar}
         onPrint={imprimir}
         sessionUser={me}
+        kits={kits}
+        kitsLoading={kitsLoading}
+        reloadKits={loadKits}
       />
     </DashboardShell>
   );
@@ -815,6 +865,9 @@ function EntregaModal({
   onSave,
   onPrint,
   sessionUser,
+  kits,
+  kitsLoading,
+  reloadKits,
 }: {
   open: boolean;
   setOpen: (v: boolean) => void;
@@ -823,9 +876,36 @@ function EntregaModal({
   onSave: () => void;
   onPrint: (row: Entrega) => void;
   sessionUser: SessionUser | null;
+
+  kits: KitApi[];
+  kitsLoading: boolean;
+  reloadKits: () => Promise<void>;
 }) {
   const [benefLoading, setBenefLoading] = useState(false);
 
+  // ✅ HOOKS SIEMPRE ARRIBA (antes de cualquier return condicional)
+  useEffect(() => {
+    if (!draft) return;
+    if (draft.kitId) return;
+    if (!draft.kit?.trim()) return;
+    if (!kits.length) return;
+
+    const hit = kits.find(
+      (k) => k.nombre.trim().toLowerCase() === draft.kit!.trim().toLowerCase()
+    );
+
+    if (hit) {
+      // ✅ evita usar "draft" viejo: actualiza con función
+      setDraft((prev) => {
+        if (!prev) return prev;
+        if (prev.kitId) return prev;
+        if (!prev.kit?.trim()) return prev;
+        return { ...prev, kitId: hit.id, kit: hit.nombre };
+      });
+    }
+  }, [draft, kits, setDraft]);
+
+  // ✅ ahora sí puedes retornar
   if (!draft) return null;
 
   const setItem = (i: number, patch: Partial<Item>) => {
@@ -837,13 +917,37 @@ function EntregaModal({
   const addItem = () =>
     setDraft({
       ...draft,
-      items: [...draft.items, { id: crypto.randomUUID(), nombre: "", unidad: "UND", cantidad: 1 }],
+      items: [
+        ...draft.items,
+        ({ nombre: "", unidad: "UND", cantidad: 1 } as any), // ❌ sin id
+      ],
     });
 
-  const rmItem = (i: number) => setDraft({ ...draft, items: draft.items.filter((_, idx) => idx !== i) });
+  const rmItem = (i: number) =>
+    setDraft({
+      ...draft,
+      items: draft.items.filter((_, idx) => idx !== i),
+    });
 
-  const onTemplate = (k: string) =>
-    setDraft({ ...draft, kit: k, items: JSON.parse(JSON.stringify(TEMPLATES[k] || [])) });
+  // ✅ Selección desde BD (NO quemado)
+  const onSelectKit = (kitIdStr: string) => {
+    if (!kitIdStr) {
+      setDraft({ ...draft, kitId: null, kit: "" });
+      return;
+    }
+    const kitId = Number(kitIdStr);
+    const kit = kits.find((k) => k.id === kitId);
+    if (!kit) return;
+
+    // ✅ snapshot: kit nombre + items copiados
+    const items = toEntregaItemsFromKit(kit);
+    setDraft({
+      ...draft,
+      kitId: kit.id,
+      kit: kit.nombre,
+      items,
+    });
+  };
 
   const onAdj = (files: FileList | null) => {
     if (!files) return;
@@ -852,7 +956,10 @@ function EntregaModal({
   };
 
   const rmAdj = (name: string) =>
-    setDraft({ ...draft, adjuntos: draft.adjuntos.filter((a) => a.name !== name) });
+    setDraft({
+      ...draft,
+      adjuntos: draft.adjuntos.filter((a) => a.name !== name),
+    });
 
   const buscarBeneficiario = async () => {
     const tipo = (draft.beneficiario?.tipo_doc ?? "CC") as TipoDoc;
@@ -863,8 +970,10 @@ function EntregaModal({
       setBenefLoading(true);
 
       const res = await fetch(
-        `/api/beneficiarios/buscar?tipo=${encodeURIComponent(tipo)}&doc=${encodeURIComponent(doc)}`,
-        { cache: "no-store" }
+        `/api/beneficiarios/buscar?tipo=${encodeURIComponent(
+          tipo
+        )}&doc=${encodeURIComponent(doc)}`,
+        { cache: "no-store", credentials: "include" }
       );
 
       if (!res.ok) {
@@ -879,7 +988,10 @@ function EntregaModal({
         return;
       }
 
-      const nombre = [data.nombres, data.apellidos].filter(Boolean).join(" ").trim();
+      const nombre = [data.nombres, data.apellidos]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
 
       setDraft({
         ...draft,
@@ -889,7 +1001,10 @@ function EntregaModal({
           doc: data.num_doc ?? doc,
           nombre: nombre || draft.beneficiario.nombre,
         },
-        direccion: (draft.direccion?.trim() ? draft.direccion : (data.direccion ?? "")) || "",
+        direccion:
+          (draft.direccion?.trim()
+            ? draft.direccion
+            : (data.direccion ?? "")) || "",
       });
 
       toast.success("Beneficiario encontrado ✅");
@@ -931,7 +1046,7 @@ function EntregaModal({
               !draft?.items?.length
                 ? "Agrega ítems para imprimir"
                 : draft?.estado !== "Entregado"
-                ? "Solo se imprime cuando esté en ENTREGADO"
+                ? 'Solo se imprime cuando esté en "ENTREGADO"'
                 : "Imprimir comprobante"
             }
           >
@@ -944,6 +1059,7 @@ function EntregaModal({
         </>
       }
     >
+      {/* ✅ TU MISMO JSX (no lo toqué) */}
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Datos principales */}
         <div className="grid gap-4 lg:col-span-2">
@@ -977,9 +1093,7 @@ function EntregaModal({
               <span className="text-slate-700">Estado</span>
               <Select
                 value={draft.estado}
-                onChange={(e) =>
-                  setDraft({ ...draft, estado: e.target.value as Estado })
-                }
+                onChange={(e) => setDraft({ ...draft, estado: e.target.value as Estado })}
               >
                 {(["Pendiente", "Parcial", "Entregado"] as Estado[]).map((s) => (
                   <option key={s} value={s}>
@@ -997,20 +1111,17 @@ function EntregaModal({
                 onChange={(e) =>
                   setDraft({
                     ...draft,
-                    beneficiario: {
-                      ...draft.beneficiario,
-                      tipo_doc: e.target.value as TipoDoc,
-                    },
+                    beneficiario: { ...draft.beneficiario, tipo_doc: e.target.value as TipoDoc },
                   })
                 }
               >
-                {(
-                  ["CC", "TI", "CE", "RC", "PA", "PEP", "PPT", "NIT", "OTRO"] as TipoDoc[]
-                ).map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
+                {(["CC", "TI", "CE", "RC", "PA", "PEP", "PPT", "NIT", "OTRO"] as TipoDoc[]).map(
+                  (t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  )
+                )}
               </Select>
             </label>
 
@@ -1030,12 +1141,7 @@ function EntregaModal({
 
             <div className="grid gap-1 text-sm">
               <span className="text-slate-700">Buscar</span>
-              <Button
-                variant="outline"
-                type="button"
-                onClick={buscarBeneficiario}
-                disabled={benefLoading}
-              >
+              <Button variant="outline" type="button" onClick={buscarBeneficiario} disabled={benefLoading}>
                 <Search size={16} /> {benefLoading ? "Buscando..." : "Buscar beneficiario"}
               </Button>
             </div>
@@ -1047,10 +1153,7 @@ function EntregaModal({
                 onChange={(e) =>
                   setDraft({
                     ...draft,
-                    beneficiario: {
-                      ...draft.beneficiario,
-                      nombre: e.target.value,
-                    },
+                    beneficiario: { ...draft.beneficiario, nombre: e.target.value },
                   })
                 }
                 placeholder="Nombre completo"
@@ -1066,16 +1169,49 @@ function EntregaModal({
               />
             </label>
 
+            {/* ✅ Kits desde BD */}
             <label className="grid gap-1 text-sm">
-              <span className="text-slate-700">Plantilla de kit</span>
-              <Select value={draft.kit || ""} onChange={(e) => onTemplate(e.target.value)}>
-                <option value="">— Seleccionar —</option>
-                {Object.keys(TEMPLATES).map((k) => (
-                  <option key={k} value={k}>
-                    {k}
+              <span className="text-slate-700">Kit (desde BD)</span>
+              <Select
+                value={draft.kitId ? String(draft.kitId) : ""}
+                onChange={(e) => onSelectKit(e.target.value)}
+                disabled={kitsLoading}
+              >
+                <option value="">{kitsLoading ? "Cargando kits..." : "— Seleccionar —"}</option>
+                {kits.map((k) => (
+                  <option key={k.id} value={String(k.id)}>
+                    {k.nombre}
                   </option>
                 ))}
               </Select>
+
+              <div className="flex gap-2 mt-2">
+                <Button variant="outline" type="button" onClick={() => reloadKits()} disabled={kitsLoading}>
+                  {kitsLoading ? "..." : "Recargar kits"}
+                </Button>
+
+                <Button
+                  variant="ghost"
+                  type="button"
+                  onClick={() => {
+                    if (!draft.kitId) return toast.error("Selecciona un kit primero");
+                    const kit = kits.find((k) => k.id === draft.kitId);
+                    if (!kit) return toast.error("Kit no encontrado");
+                    setDraft({ ...draft, kit: kit.nombre, items: toEntregaItemsFromKit(kit) });
+                    toast.success("Items cargados desde el kit ✅");
+                  }}
+                  disabled={!draft.kitId}
+                  title="Vuelve a cargar los items del kit (sobrescribe la lista actual)"
+                >
+                  Cargar items
+                </Button>
+              </div>
+
+              {!!draft.kit && (
+                <div className="mt-1 text-xs text-slate-500">
+                  Snapshot guardado en entrega: <b>{draft.kit}</b>
+                </div>
+              )}
             </label>
           </div>
 
@@ -1102,27 +1238,15 @@ function EntregaModal({
                 </thead>
                 <tbody>
                   {draft.items.map((it, i) => (
-                    <tr key={it.id} className="border-b border-[var(--subtle)]/60">
+                    <tr key={i} className="border-b border-[var(--subtle)]/60">
                       <td className="px-2 py-2">
-                        <Input
-                          value={it.nombre}
-                          onChange={(e) => setItem(i, { nombre: e.target.value })}
-                          placeholder="Nombre del producto"
-                        />
+                        <Input value={it.nombre} onChange={(e) => setItem(i, { nombre: e.target.value })} placeholder="Nombre del producto" />
                       </td>
                       <td className="px-2 py-2">
-                        <Input
-                          value={it.unidad}
-                          onChange={(e) => setItem(i, { unidad: e.target.value })}
-                          placeholder="UND/KG/L..."
-                        />
+                        <Input value={it.unidad} onChange={(e) => setItem(i, { unidad: e.target.value })} placeholder="UND/KG/L..." />
                       </td>
                       <td className="px-2 py-2">
-                        <Input
-                          type="number"
-                          value={it.cantidad}
-                          onChange={(e) => setItem(i, { cantidad: Number(e.target.value) })}
-                        />
+                        <Input type="number" value={it.cantidad} onChange={(e) => setItem(i, { cantidad: Number(e.target.value) })} />
                       </td>
                       <td className="px-2 py-2">
                         <Button variant="ghost" type="button" onClick={() => rmItem(i)} title="Quitar">
@@ -1134,7 +1258,7 @@ function EntregaModal({
                   {draft.items.length === 0 && (
                     <tr>
                       <td colSpan={4} className="py-4 text-center text-slate-500">
-                        Sin ítems. Usa “Agregar”.
+                        Sin ítems. Selecciona un kit o usa “Agregar”.
                       </td>
                     </tr>
                   )}

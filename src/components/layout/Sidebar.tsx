@@ -14,6 +14,7 @@ import {
   Package,
   Banknote,
   BarChart3,
+  Boxes
 } from "lucide-react";
 
 type Item = { href: string; label: string; Icon: LucideIcon };
@@ -32,6 +33,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
         { href: "/pqrs", label: "PQRS", Icon: MessageSquare },
         { href: "/encuestas", label: "Encuestas de satisfacción", Icon: ListChecks },
         { href: "/entregas", label: "Entregas de insumos/kits", Icon: Package },
+        { href: "/kits", label: "Kits (plantillas)", Icon: Boxes }, 
         { href: "/costos", label: "Costos y gastos", Icon: Banknote },
       ],
     },
