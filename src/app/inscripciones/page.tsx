@@ -18,6 +18,7 @@ import {
   FileDown,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
 import {
   getInscripciones,
@@ -31,6 +32,8 @@ import {
   type Jornada,
 } from "@/lib/inscripciones.api";
 
+import DocumentDropzone from "@/components/files/DocumentDropzone";
+
 /* ============== Helpers UI ============== */
 function Button({
   children,
@@ -40,18 +43,25 @@ function Button({
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "solid" | "outline" | "ghost";
 }) {
-  const base =
-    "inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm transition";
+  const reduceMotion = useReducedMotion();
+  const base = "inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm transition";
   const styles =
     variant === "solid"
       ? "bg-[var(--brand)] text-white hover:opacity-90"
       : variant === "outline"
       ? "border border-[var(--subtle)] hover:bg-white"
       : "hover:bg-white";
+
   return (
-    <button className={`${base} ${styles} ${className}`} {...props}>
+    <motion.button
+      whileHover={reduceMotion ? undefined : { scale: 1.01 }}
+      whileTap={reduceMotion ? undefined : { scale: 0.98 }}
+      transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 28 }}
+      className={`${base} ${styles} ${className}`}
+      {...props}
+    >
       {children}
-    </button>
+    </motion.button>
   );
 }
 function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
@@ -108,6 +118,8 @@ function Section({
     </div>
   );
 }
+
+/* ============== Modal animado ============== */
 function Modal({
   open,
   onClose,
@@ -123,27 +135,50 @@ function Modal({
   wide?: boolean;
   children: React.ReactNode;
 }) {
-  if (!open) return null;
+  const reduceMotion = useReducedMotion();
+
   return (
-    <div className="fixed inset-0 z-50">
-      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div
-        className={`absolute left-1/2 top-1/2 ${
-          wide ? "w-[min(980px,96vw)]" : "w-[min(720px,92vw)]"
-        } -translate-x-1/2 -translate-y-1/2 rounded-lg border border-[var(--subtle)] bg-[var(--panel)] shadow-xl`}
-      >
-        <div className="flex items-center justify-between border-b border-[var(--subtle)] px-4 py-3">
-          <h4 className="text-sm font-semibold">{title}</h4>
-          <button onClick={onClose} className="p-1 rounded hover:bg-slate-100">
-            <X size={16} />
-          </button>
+    <AnimatePresence initial={false}>
+      {open && (
+        <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+          <motion.div
+            className="absolute inset-0 bg-black/30"
+            onClick={onClose}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={reduceMotion ? { duration: 0 } : { duration: 0.15 }}
+          />
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            <motion.div
+              initial={reduceMotion ? false : { opacity: 0, y: 12, scale: 0.98 }}
+              animate={reduceMotion ? {} : { opacity: 1, y: 0, scale: 1 }}
+              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.98 }}
+              transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 260, damping: 26 }}
+              className={[
+                wide ? "w-[min(980px,96vw)]" : "w-[min(720px,92vw)]",
+                "max-h-[92vh] overflow-hidden",
+                "rounded-xl border border-[var(--subtle)] bg-[var(--panel)] shadow-2xl",
+                "flex flex-col",
+              ].join(" ")}
+            >
+              <div className="flex items-center justify-between border-b border-[var(--subtle)] px-4 py-3">
+                <h4 className="text-sm font-semibold">{title}</h4>
+                <button onClick={onClose} className="p-1 rounded hover:bg-slate-100" type="button">
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="flex-1 min-h-0 p-4 overflow-y-auto">{children}</div>
+
+              <div className="flex items-center justify-end gap-2 border-t border-[var(--subtle)] px-4 py-3">
+                {actions}
+              </div>
+            </motion.div>
+          </div>
         </div>
-        <div className="p-4">{children}</div>
-        <div className="flex items-center justify-end gap-2 border-t border-[var(--subtle)] px-4 py-3">
-          {actions}
-        </div>
-      </div>
-    </div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -156,17 +191,19 @@ const money = (n: number) =>
 
 const HOY = new Date().toISOString().slice(0, 10);
 
-/* ============== Utilidades ============== */
-const actividades = [
-  "A1 • Actividad 1",
-  "A2 • Actividad 2",
-  "A3 • Actividad 3",
-  "A4 • Actividad 4",
-  "A5 • Actividad 5",
-  "A6 • Actividad 6",
-  "A7 • Actividad 7",
-  "A8 • Actividad 8",
-];
+type ActividadApi = {
+  id: number;
+  codigo: string;
+  nombre: string;
+  estado: "Abierta" | "Cerrada" | string;
+};
+
+const actividadLabel = (a: ActividadApi) => `${a.codigo} • ${a.nombre}`;
+
+const pickDefaultActividad = (arr: ActividadApi[]) => {
+  const abiertas = arr.filter((x) => String(x.estado).toLowerCase() === "abierta");
+  return (abiertas[0] ?? arr[0]) || null;
+};
 
 const canGenerateContract = (r: Inscripcion) =>
   r.evaluacion?.decision === "Aprobar" &&
@@ -175,10 +212,19 @@ const canGenerateContract = (r: Inscripcion) =>
   !!r.evaluacion?.docsOk?.doc &&
   !!r.evaluacion?.docsOk?.certificados;
 
+function computeEstadoFromDecision(d: Inscripcion): Estado {
+  if (d.estado === "Contrato generado" || d.estado === "Firmado") return d.estado;
+
+  const dec = d.evaluacion?.decision;
+  if (dec === "Aprobar") return "Aprobada";
+  if (dec === "Rechazar") return "Rechazada";
+  return "En evaluación";
+}
+
 /* ============== Draft para crear (id=0) ============== */
 function newDraft(): Inscripcion {
   return {
-    id: 0, // 👈 nuevo (el backend asigna el id real)
+    id: 0,
     radicado: "",
     fecha: HOY,
     tipo: "Asistencial",
@@ -193,7 +239,9 @@ function newDraft(): Inscripcion {
       ciudad: "",
     },
     cargo: "",
-    actividad: actividades[0],
+    // ✅ ya NO hay actividades quemadas:
+    // dejamos vacío y se setea en `nueva()` con pickDefaultActividad(actividades)
+    actividad: "",
     estado: "En evaluación",
     evaluacion: {
       puntaje: 0,
@@ -205,17 +253,6 @@ function newDraft(): Inscripcion {
     adjuntos: [],
   };
 }
-
-function computeEstadoFromDecision(d: Inscripcion): Estado {
-  // Si ya está en estados finales, no lo dañes
-  if (d.estado === "Contrato generado" || d.estado === "Firmado") return d.estado;
-
-  const dec = d.evaluacion?.decision;
-  if (dec === "Aprobar") return "Aprobada";
-  if (dec === "Rechazar") return "Rechazada";
-  return "En evaluación";
-}
-
 /* ============== Página principal ============== */
 export default function InscripcionesPage() {
   const title = "Inscripciones y contratos";
@@ -234,6 +271,28 @@ export default function InscripcionesPage() {
   const [openDelete, setOpenDelete] = useState(false);
   const [targetDelete, setTargetDelete] = useState<Inscripcion | null>(null);
 
+  const [actividades, setActividades] = useState<ActividadApi[]>([]);
+  const [actividadesLoading, setActividadesLoading] = useState(false);
+
+  const loadActividades = async () => {
+    setActividadesLoading(true);
+    try {
+      const res = await fetch(`/api/costos/actividades?ts=${Date.now()}`, {
+        cache: "no-store",
+        credentials: "include",
+        headers: { "cache-control": "no-cache", pragma: "no-cache" },
+      });
+      if (!res.ok) throw new Error("No se pudo cargar actividades");
+      const data = await res.json();
+      setActividades(Array.isArray(data?.items) ? data.items : []);
+    } catch (e: any) {
+      toast.error(e?.message ?? "No se pudo cargar actividades");
+      setActividades([]);
+    } finally {
+      setActividadesLoading(false);
+    }
+  };
+
   const reload = async (qOverride?: string) => {
     setLoading(true);
     try {
@@ -250,23 +309,35 @@ export default function InscripcionesPage() {
     }
   };
 
+  // ✅ debounce para q + filtros
   useEffect(() => {
-  const t = setTimeout(() => {
-    reload();
-  }, 300);
-  return () => clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [q]);
+    const t = setTimeout(() => {
+      reload().catch(() => {});
+    }, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, fEstado, fTipo]);
 
   useEffect(() => {
+    loadActividades().catch(() => {});
     reload().catch(() => toast.error("No se pudo cargar inscripciones"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!open) return;
+    if (!actividades.length) return;
+
+    setDraft((prev) => {
+      if (!prev) return prev;
+      if (prev.actividad?.trim()) return prev;
+      const def = pickDefaultActividad(actividades);
+      return def ? { ...prev, actividad: actividadLabel(def) } : prev;
+    });
+  }, [open, actividades, setDraft]);
+
   const lista = useMemo(() => {
     const t = q.trim().toLowerCase();
-
-    // filtro local (porque el backend aún no busca dentro del JSON candidato)
     return rows.filter((r) => {
       const okQ =
         !t ||
@@ -290,18 +361,9 @@ export default function InscripcionesPage() {
   }, [rows, q, fEstado, fTipo]);
 
   const nueva = () => {
-  const d: Inscripcion = {
-      id: 0, // 👈 nuevo, el backend asigna el id real
-      radicado: "",
-      fecha: new Date().toISOString().slice(0, 10),
-      tipo: "Asistencial",
-      candidato: { doc: "", nombres: "", apellidos: "", telefono: "", email: "", direccion: "", ciudad: "" },
-      cargo: "",
-      actividad: actividades[0],
-      estado: "En evaluación",
-      evaluacion: { puntaje: 0, docsOk: { cv: false, doc: false, certificados: false, rut: false }, concepto: "" },
-      adjuntos: [],
-    };
+    const d = newDraft();
+    const def = pickDefaultActividad(actividades);
+    d.actividad = def ? actividadLabel(def) : "";
     setDraft(d);
     setStep(1);
     setOpen(true);
@@ -316,11 +378,12 @@ export default function InscripcionesPage() {
   const guardar = async () => {
     if (!draft) return;
 
-    // Validación mínima
-    if (!draft.candidato.doc || !draft.candidato.nombres || !draft.candidato.apellidos || !draft.cargo) {
+    if (!draft.candidato?.doc || !draft.candidato?.nombres || !draft.candidato?.apellidos || !draft.cargo) {
       toast.error("Faltan datos obligatorios del candidato.");
       return;
     }
+
+    const normalizedEstado = computeEstadoFromDecision(draft);
 
     const payload: any = {
       fecha: draft.fecha,
@@ -328,7 +391,7 @@ export default function InscripcionesPage() {
       candidato: draft.candidato,
       cargo: draft.cargo,
       actividad: draft.actividad,
-      estado: draft.estado,
+      estado: normalizedEstado,
       evaluacion: draft.evaluacion,
       contrato: draft.contrato ?? undefined,
       adjuntos: draft.adjuntos ?? [],
@@ -342,40 +405,34 @@ export default function InscripcionesPage() {
     if (!saved) return;
 
     toast.success("Guardado ✅");
-
-    // ✅ clave: actualizar el draft con lo que devolvió la BD (id y radicado)
     setDraft(saved);
-
-    // refrescar tabla
     await reload();
   };
 
   const confirmDelete = (r: Inscripcion) => {
-  setTargetDelete(r);
-  setOpenDelete(true);
-};
+    setTargetDelete(r);
+    setOpenDelete(true);
+  };
 
-const doDelete = async () => {
-  if (!targetDelete?.id) return;
-  const ok = await deleteInscripcion(targetDelete.id);
-  if (ok) {
-    toast.success("Inscripción eliminada ✅");
-    await reload();
-  }
-  setOpenDelete(false);
-  setTargetDelete(null);
-};
-    
+  const doDelete = async () => {
+    if (!targetDelete?.id) return;
+    const ok = await deleteInscripcion(targetDelete.id);
+    if (ok) {
+      toast.success("Inscripción eliminada ✅");
+      await reload();
+    }
+    setOpenDelete(false);
+    setTargetDelete(null);
+  };
+
   const generarContrato = async () => {
     if (!draft) return;
 
-    // 1) Debe existir en BD
     if (!draft.id || draft.id <= 0) {
       toast.error("Primero guarda la inscripción para poder generar el contrato.");
       return;
     }
 
-    // 2) Requisitos para generar contrato
     const ev = draft.evaluacion;
     const okDocs = ev?.docsOk?.cv && ev?.docsOk?.doc && ev?.docsOk?.certificados;
     const okScore = (ev?.puntaje ?? 0) >= 70;
@@ -385,7 +442,6 @@ const doDelete = async () => {
     if (!okScore) return toast.error("Para generar contrato, el puntaje debe ser ≥ 70.");
     if (!okDocs) return toast.error("Para generar contrato, CV/Documento/Certificados deben estar OK.");
 
-    // 3) Contrato obligatorio
     const c = draft.contrato;
     if (!c) return toast.error("Completa los datos del contrato (Paso 3).");
     if (!c.modalidad || !c.jornada || !c.salarioTipo) return toast.error("Faltan datos del contrato.");
@@ -395,7 +451,6 @@ const doDelete = async () => {
       return toast.error("En modalidad Temporal la fecha fin es obligatoria.");
     }
 
-    // 4) Guardar en BD: estado + contrato (y evaluacion por si cambió)
     const saved = await updateInscripcion(draft.id, {
       estado: "Contrato generado",
       evaluacion: draft.evaluacion,
@@ -405,21 +460,14 @@ const doDelete = async () => {
     if (!saved) return;
 
     toast.success("Contrato generado ✅");
-    setDraft(saved);      // actualizar modal con lo que devolvió API
-    await reload();       // refrescar tabla
+    setDraft(saved);
+    await reload();
   };
 
   const marcarFirmado = async (r: Inscripcion) => {
     const saved = await updateInscripcion(r.id, { estado: "Firmado" } as any);
     if (!saved) return;
     toast.success("Marcado como firmado ✅");
-    await reload();
-  };
-
-  const quitar = async (r: Inscripcion) => {
-    if (!r.id) return;
-    const ok = await deleteInscripcion(r.id);
-    if (!ok) return;
     await reload();
   };
 
@@ -448,9 +496,7 @@ const doDelete = async () => {
                 </Select>
                 <Select value={fEstado} onChange={(e) => setFEstado(e.target.value as Estado | "")}>
                   <option value="">Estado: Todos</option>
-                  {(
-                    ["En evaluación", "Aprobada", "Rechazada", "Contrato generado", "Firmado"] as const
-                  ).map((s) => (
+                  {(["En evaluación", "Aprobada", "Rechazada", "Contrato generado", "Firmado"] as const).map((s) => (
                     <option key={s} value={s}>
                       {s}
                     </option>
@@ -558,7 +604,12 @@ const doDelete = async () => {
         setStep={setStep}
         onSave={guardar}
         onGenerate={generarContrato}
+        actividades={actividades}
+        actividadesLoading={actividadesLoading}
+        reloadActividades={loadActividades}
       />
+
+      {/* Confirmar eliminación */}
       <Modal
         open={openDelete}
         onClose={() => setOpenDelete(false)}
@@ -568,18 +619,14 @@ const doDelete = async () => {
             <Button variant="ghost" onClick={() => setOpenDelete(false)}>
               Cancelar
             </Button>
-            <Button
-              onClick={doDelete}
-              className="text-white bg-rose-600 hover:bg-rose-700"
-            >
+            <Button onClick={doDelete} className="text-white bg-rose-600 hover:bg-rose-700">
               <Trash2 size={16} /> Eliminar
             </Button>
           </>
         }
       >
         <div className="text-sm text-slate-700">
-          ¿Seguro que deseas eliminar la inscripción{" "}
-          <b>{targetDelete?.radicado || "(sin radicado)"}</b> de{" "}
+          ¿Seguro que deseas eliminar la inscripción <b>{targetDelete?.radicado || "(sin radicado)"}</b> de{" "}
           <b>
             {targetDelete
               ? `${targetDelete.candidato?.nombres || ""} ${targetDelete.candidato?.apellidos || ""}`.trim()
@@ -603,6 +650,9 @@ function WizardModal({
   setStep,
   onSave,
   onGenerate,
+  actividades,
+  actividadesLoading,
+  reloadActividades,
 }: {
   open: boolean;
   setOpen: (v: boolean) => void;
@@ -612,7 +662,11 @@ function WizardModal({
   setStep: (n: number) => void;
   onSave: () => void;
   onGenerate: () => void;
+  actividades: ActividadApi[];
+  actividadesLoading: boolean;
+  reloadActividades: () => Promise<void>;
 }) {
+  const reduceMotion = useReducedMotion();
   if (!draft) return null;
 
   const next = () => setStep(Math.min(4, step + 1));
@@ -649,11 +703,13 @@ function WizardModal({
           <Button variant="ghost" onClick={() => setOpen(false)}>
             Cerrar
           </Button>
+
           {step > 1 && (
             <Button variant="outline" onClick={prev}>
               Atrás
             </Button>
           )}
+
           {step < 4 && (
             <Button
               onClick={next}
@@ -666,14 +722,10 @@ function WizardModal({
               Siguiente
             </Button>
           )}
+
           {step === 4 && (
             <>
-              <Button
-                variant="outline"
-                onClick={async () => {
-                  await onSave();
-                }}
-              >
+              <Button variant="outline" onClick={onSave}>
                 <FileDown size={16} /> Guardar
               </Button>
               <Button onClick={onGenerate} disabled={!canGen}>
@@ -685,10 +737,33 @@ function WizardModal({
       }
     >
       <Stepper step={step} />
-      {step === 1 && <PasoDatos draft={draft} setDraft={setDraft} />}
-      {step === 2 && <PasoEvaluacion draft={draft} setDraft={setDraft} />}
-      {step === 3 && <PasoContrato draft={draft} setDraft={setDraft} />}
-      {step === 4 && <PasoPreview draft={draft} />}
+
+      {/* ✅ transición entre pasos */}
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={step}
+          initial={reduceMotion ? false : { opacity: 0, x: 10 }}
+          animate={reduceMotion ? {} : { opacity: 1, x: 0 }}
+          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, x: -10 }}
+          transition={reduceMotion ? { duration: 0 } : { duration: 0.16 }}
+        >
+          {step === 1 && (
+            <PasoDatos
+              draft={draft}
+              setDraft={setDraft}
+              actividades={actividades}
+              actividadesLoading={actividadesLoading}
+              reloadActividades={reloadActividades}
+            />
+          )}
+
+          {step === 2 && <PasoEvaluacion draft={draft} setDraft={setDraft} />}
+
+          {step === 3 && <PasoContrato draft={draft} setDraft={setDraft} />}
+
+          {step === 4 && <PasoPreview draft={draft} />}
+        </motion.div>
+      </AnimatePresence>
     </Modal>
   );
 }
@@ -707,15 +782,10 @@ function Stepper({ step }: { step: number }) {
         <div key={it.n} className="flex items-center flex-1 gap-2">
           <div className={`flex items-center gap-2 ${idx > 0 ? "w-full" : ""}`}>
             {idx > 0 && (
-              <div
-                className={`h-[2px] flex-1 rounded ${
-                  step > it.n ? "bg-[var(--brand)]" : "bg-slate-200"
-                }`}
-              />
+              <div className={`h-[2px] flex-1 rounded ${step > it.n ? "bg-[var(--brand)]" : "bg-slate-200"}`} />
             )}
             <div
-              className={`w-7 h-7 rounded-full flex items-center justify-center text-[12px] border
-              ${
+              className={`w-7 h-7 rounded-full flex items-center justify-center text-[12px] border ${
                 step >= it.n
                   ? "bg-[var(--brand)] text-white border-[var(--brand)]"
                   : "bg-white text-slate-600 border-[var(--subtle)]"
@@ -723,9 +793,7 @@ function Stepper({ step }: { step: number }) {
             >
               {it.n}
             </div>
-            <div className={`text-xs ${step >= it.n ? "text-slate-800" : "text-slate-500"}`}>
-              {it.t}
-            </div>
+            <div className={`text-xs ${step >= it.n ? "text-slate-800" : "text-slate-500"}`}>{it.t}</div>
           </div>
         </div>
       ))}
@@ -737,10 +805,55 @@ function Stepper({ step }: { step: number }) {
 function PasoDatos({
   draft,
   setDraft,
+  actividades,
+  actividadesLoading,
+  reloadActividades,
 }: {
   draft: Inscripcion;
   setDraft: React.Dispatch<React.SetStateAction<Inscripcion | null>>;
+  actividades: ActividadApi[];
+  actividadesLoading: boolean;
+  reloadActividades: () => Promise<void>;
 }) {
+  // ✅ Adjuntos guardados (metadata) + nuevos (File[])
+  type AdjMeta = { name: string; size: number };
+
+  const [adjSaved, setAdjSaved] = useState<AdjMeta[]>(
+    Array.isArray(draft.adjuntos) ? (draft.adjuntos as any) : []
+  );
+  const [adjNew, setAdjNew] = useState<File[]>([]);
+
+  // ✅ cuando cambia el draft (abrir otra inscripción), reinicia estados locales
+  useEffect(() => {
+    setAdjSaved(Array.isArray(draft.adjuntos) ? (draft.adjuntos as any) : []);
+    setAdjNew([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.id, draft.radicado]);
+
+  // ✅ sincroniza SIEMPRE draft.adjuntos = adjSaved + adjNew (metadata), sin duplicados
+  useEffect(() => {
+    const saved = (adjSaved || []).map((x) => ({
+      name: String((x as any)?.name ?? (x as any)?.nombre ?? "").trim(),
+      size: Number((x as any)?.size ?? 0),
+    })).filter((x) => x.name);
+
+    const news = (adjNew || []).map((f) => ({ name: f.name, size: f.size }));
+
+    const seen = new Set<string>();
+    const merged = [...saved, ...news].filter((x) => {
+      const k = `${x.name}__${x.size}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+
+    setDraft((prev) => (prev ? { ...prev, adjuntos: merged as any } : prev));
+  }, [adjSaved, adjNew, setDraft]);
+
+  const removeSaved = (name: string, size: number) => {
+    setAdjSaved((prev) => prev.filter((a) => !(a.name === name && a.size === size)));
+  };
+
   return (
     <Section title="Datos del candidato" icon={<User size={18} />}>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -748,7 +861,9 @@ function PasoDatos({
           <span className="text-slate-700">Tipo de personal</span>
           <Select
             value={draft.tipo}
-            onChange={(e) => setDraft((prev) => (prev ? { ...prev, tipo: e.target.value as any } : prev))}
+            onChange={(e) =>
+              setDraft((prev) => (prev ? { ...prev, tipo: e.target.value as any } : prev))
+            }
           >
             {(["Administrativo", "Asistencial"] as const).map((t) => (
               <option key={t} value={t}>
@@ -774,10 +889,14 @@ function PasoDatos({
           <Select
             value={(draft.candidato as any).tipo_doc ?? "CC"}
             onChange={(e) =>
-              setDraft({
-                ...draft,
-                candidato: { ...draft.candidato, tipo_doc: e.target.value },
-              })
+              setDraft((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      candidato: { ...prev.candidato, tipo_doc: e.target.value } as any,
+                    }
+                  : prev
+              )
             }
           >
             <option value="CC">Cédula de Ciudadanía (CC)</option>
@@ -799,24 +918,30 @@ function PasoDatos({
             }
           />
         </label>
+
         <label className="grid gap-1 text-sm">
           <span className="text-slate-700">Nombres</span>
           <Input
             value={draft.candidato?.nombres ?? ""}
             onChange={(e) =>
               setDraft((prev) =>
-                prev ? { ...prev, candidato: { ...prev.candidato, nombres: e.target.value } } : prev
+                prev
+                  ? { ...prev, candidato: { ...prev.candidato, nombres: e.target.value } }
+                  : prev
               )
             }
           />
         </label>
+
         <label className="grid gap-1 text-sm">
           <span className="text-slate-700">Apellidos</span>
           <Input
             value={draft.candidato?.apellidos ?? ""}
             onChange={(e) =>
               setDraft((prev) =>
-                prev ? { ...prev, candidato: { ...prev.candidato, apellidos: e.target.value } } : prev
+                prev
+                  ? { ...prev, candidato: { ...prev.candidato, apellidos: e.target.value } }
+                  : prev
               )
             }
           />
@@ -828,11 +953,14 @@ function PasoDatos({
             value={draft.candidato?.telefono ?? ""}
             onChange={(e) =>
               setDraft((prev) =>
-                prev ? { ...prev, candidato: { ...prev.candidato, telefono: e.target.value } } : prev
+                prev
+                  ? { ...prev, candidato: { ...prev.candidato, telefono: e.target.value } }
+                  : prev
               )
             }
           />
         </label>
+
         <label className="grid gap-1 text-sm">
           <span className="text-slate-700">Email</span>
           <Input
@@ -845,19 +973,48 @@ function PasoDatos({
           />
         </label>
 
-        <label className="grid gap-1 text-sm">
-          <span className="text-slate-700">Actividad</span>
-          <Select
-            value={draft.actividad}
-            onChange={(e) => setDraft((prev) => (prev ? { ...prev, actividad: e.target.value } : prev))}
-          >
-            {actividades.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </Select>
-        </label>
+<label className="grid gap-1 text-sm">
+  <span className="text-slate-700">Actividad</span>
+
+  <Select
+    value={draft.actividad || ""}
+    onChange={(e) =>
+      setDraft((prev) => (prev ? { ...prev, actividad: e.target.value } : prev))
+    }
+    disabled={actividadesLoading}
+  >
+    <option value="">
+      {actividadesLoading ? "Cargando actividades..." : "Seleccione actividad"}
+    </option>
+
+    {/* Si la inscripción trae una actividad que ya no existe, la mostramos igual */}
+    {!!draft.actividad &&
+      !actividades.some((a) => actividadLabel(a) === draft.actividad) && (
+        <option value={draft.actividad}>Actual: {draft.actividad}</option>
+      )}
+
+    {actividades.map((a) => {
+      const label = actividadLabel(a);
+      const cerrada = String(a.estado).toLowerCase() === "cerrada";
+      return (
+        <option key={a.id} value={label} disabled={cerrada}>
+          {label}{cerrada ? " (Cerrada)" : ""}
+        </option>
+      );
+    })}
+  </Select>
+
+  <div className="mt-2">
+    <Button
+      type="button"
+      variant="outline"
+      onClick={() => reloadActividades()}
+      disabled={actividadesLoading}
+    >
+      {actividadesLoading ? "..." : "Recargar actividades"}
+    </Button>
+  </div>
+</label>
 
         <label className="grid gap-1 text-sm md:col-span-2">
           <span className="text-slate-700">Dirección</span>
@@ -865,7 +1022,9 @@ function PasoDatos({
             value={draft.candidato?.direccion ?? ""}
             onChange={(e) =>
               setDraft((prev) =>
-                prev ? { ...prev, candidato: { ...prev.candidato, direccion: e.target.value } } : prev
+                prev
+                  ? { ...prev, candidato: { ...prev.candidato, direccion: e.target.value } }
+                  : prev
               )
             }
           />
@@ -884,20 +1043,29 @@ function PasoDatos({
         </label>
       </div>
 
-      <div className="grid gap-2 mt-4">
-        <div className="text-sm font-semibold">Adjuntos (PDF/otros)</div>
-        <input
-          type="file"
-          multiple
-          onChange={(e) => {
-            if (!e.target.files) return;
-            const arr = Array.from(e.target.files).map((f) => ({ name: f.name, size: f.size }));
-            setDraft((prev) => (prev ? { ...prev, adjuntos: [...(prev.adjuntos ?? []), ...arr] } : prev));
-          }}
+      {/* ✅ DROPZONE PRO */}
+      <div className="grid gap-3 mt-6">
+        <div className="text-sm font-semibold">Adjuntos (PDF)</div>
+
+        <DocumentDropzone
+          value={adjNew}
+          onChange={setAdjNew}
+          maxFiles={10}
+          maxSizeMB={10}
         />
 
-        {!!draft.adjuntos?.length && (
-          <div className="overflow-x-auto">
+        <div className="text-xs text-slate-500">
+          Los adjuntos se registran en la inscripción. (En esta versión se guarda la lista/metadata; cuando quieras, lo conectamos a descarga real con storage).
+        </div>
+
+        {/* ✅ Adjuntos guardados (al editar) */}
+        {adjSaved.length > 0 && (
+          <div className="overflow-x-auto rounded-md border border-[var(--subtle)] bg-white">
+            <div className="border-b border-[var(--subtle)] px-3 py-2">
+              <div className="text-sm font-semibold text-slate-800">Adjuntos guardados</div>
+              <div className="text-xs text-slate-500">Estos ya estaban registrados en esta inscripción.</div>
+            </div>
+
             <table className="min-w-full text-sm">
               <thead className="border-b border-[var(--subtle)] text-slate-500">
                 <tr>
@@ -907,18 +1075,15 @@ function PasoDatos({
                 </tr>
               </thead>
               <tbody>
-                {draft.adjuntos.map((a) => (
-                  <tr key={a.name} className="border-b border-[var(--subtle)]/60">
+                {adjSaved.map((a, idx) => (
+                  <tr key={`${a.name}-${a.size}-${idx}`} className="border-b border-[var(--subtle)]/60 last:border-b-0">
                     <td className="px-3 py-2">{a.name}</td>
                     <td className="px-3 py-2">{(a.size / 1024).toFixed(1)} KB</td>
                     <td className="px-3 py-2">
                       <Button
                         variant="ghost"
-                        onClick={() =>
-                          setDraft((prev) =>
-                            prev ? { ...prev, adjuntos: prev.adjuntos.filter((x) => x.name !== a.name) } : prev
-                          )
-                        }
+                        type="button"
+                        onClick={() => removeSaved(a.name, a.size)}
                       >
                         <Trash2 size={14} /> Quitar
                       </Button>
@@ -974,11 +1139,18 @@ function PasoEvaluacion({
           <span className="text-slate-700">Decisión</span>
           <Select
             value={ev.decision || ""}
-            onChange={(e) =>
-              setDraft((prev) =>
-                prev ? { ...prev, evaluacion: { ...prev.evaluacion, decision: e.target.value as any } } : prev
-              )
-            }
+            onChange={(e) => {
+              const decision = (e.target.value || undefined) as any;
+              setDraft((prev) => {
+                if (!prev) return prev;
+                const next = {
+                  ...prev,
+                  evaluacion: { ...prev.evaluacion, decision },
+                };
+                // ✅ actualiza estado automáticamente sin dañar estados finales
+                return { ...next, estado: computeEstadoFromDecision(next) };
+              });
+            }}
           >
             <option value="">Seleccione</option>
             <option value="Aprobar">Aprobar</option>
@@ -1023,9 +1195,7 @@ function PasoEvaluacion({
           rows={3}
           value={ev.concepto}
           onChange={(e) =>
-            setDraft((prev) =>
-              prev ? { ...prev, evaluacion: { ...prev.evaluacion, concepto: e.target.value } } : prev
-            )
+            setDraft((prev) => (prev ? { ...prev, evaluacion: { ...prev.evaluacion, concepto: e.target.value } } : prev))
           }
           placeholder="Resumen de entrevistas, verificación de referencias, etc."
         />
@@ -1134,8 +1304,8 @@ function PasoContrato({
       </div>
 
       <div className="mt-3 text-xs text-slate-600">
-        Resumen: <b>{c.modalidad}</b>, <b>{c.jornada}</b>, {c.salarioTipo.toLowerCase()} de <b>{money(c.valor)}</b>{" "}
-        ({c.periodo}). {c.inicio}
+        Resumen: <b>{c.modalidad}</b>, <b>{c.jornada}</b>, {String(c.salarioTipo).toLowerCase()} de <b>{money(c.valor)}</b>{" "}
+        ({String(c.periodo).toLowerCase()}). {c.inicio}
         {c.fin ? ` → ${c.fin}` : ""}.
       </div>
     </Section>
@@ -1196,10 +1366,7 @@ function PasoPreview({ draft }: { draft: Inscripcion }) {
         </>
       }
     >
-      <div
-        className="rounded border border-[var(--subtle)] bg-white p-4 text-sm leading-6"
-        style={{ maxHeight: 420, overflow: "auto" }}
-      >
+      <div className="rounded border border-[var(--subtle)] bg-white p-4 text-sm leading-6" style={{ maxHeight: 420, overflow: "auto" }}>
         <pre className="font-sans whitespace-pre-wrap">{contratoTxt}</pre>
       </div>
       <div className="mt-2 text-xs text-slate-500">
@@ -1213,12 +1380,10 @@ function PasoPreview({ draft }: { draft: Inscripcion }) {
 function renderContrato(r: Inscripcion) {
   const c = r.contrato!;
   const nom = `${r.candidato.nombres} ${r.candidato.apellidos}`.trim();
-  const objeto =
-    c.descripcion?.trim() ||
-    `Prestación de servicios como ${r.cargo} en el marco de ${r.actividad}.`;
+  const objeto = c.descripcion?.trim() || `Prestación de servicios como ${r.cargo} en el marco de ${r.actividad}.`;
 
   return `
-CONTRATO DE ${c.modalidad.toUpperCase()} No. ${r.radicado || "SIN RADICADO"}
+CONTRATO DE ${String(c.modalidad).toUpperCase()} No. ${r.radicado || "SIN RADICADO"}
 
 Entre CEBMAG, quien para efectos del presente contrato se denominará “LA CONTRATANTE”, y ${nom}, mayor de edad, identificado(a) con documento No. ${r.candidato.doc}, quien en adelante se denominará “EL(LA) CONTRATISTA”, se celebra el presente contrato conforme a las siguientes cláusulas:
 
@@ -1228,7 +1393,7 @@ SEGUNDA – PLAZO: El contrato tendrá vigencia desde el ${fmtFecha(c.inicio)} $
     c.fin ? `hasta el ${fmtFecha(c.fin)}` : "y hasta la terminación por cumplimiento del objeto o decisión de las partes"
   }.
 
-TERCERA – VALOR Y FORMA DE PAGO: ${c.salarioTipo} por ${money(c.valor)} (${c.periodo.toLowerCase()}). Los pagos estarán condicionados a la entrega de actividades e informes aprobados por LA CONTRATANTE.
+TERCERA – VALOR Y FORMA DE PAGO: ${c.salarioTipo} por ${money(c.valor)} (${String(c.periodo).toLowerCase()}). Los pagos estarán condicionados a la entrega de actividades e informes aprobados por LA CONTRATANTE.
 
 CUARTA – JORNADA Y LUGAR: ${c.jornada}. Las actividades se desarrollarán según programación de ${r.actividad} y lineamientos de CEBMAG.
 
@@ -1256,11 +1421,7 @@ EL(LA) CONTRATISTA: ${nom}
 function fmtFecha(iso: string) {
   try {
     const d = new Date(iso);
-    return d.toLocaleDateString("es-CO", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
+    return d.toLocaleDateString("es-CO", { year: "numeric", month: "long", day: "numeric" });
   } catch {
     return iso;
   }
