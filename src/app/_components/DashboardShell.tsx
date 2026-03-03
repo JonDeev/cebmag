@@ -27,7 +27,7 @@ export default function DashboardShell({
         </main>
       </div>
 
-      <FooterNotice />
+      {/* <FooterNotice /> */}
     </div>
   );
 }
