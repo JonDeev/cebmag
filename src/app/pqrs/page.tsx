@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import ClosePqrsModal from "@/components/ui/ClosePqrsModal";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import DocumentDropzone from "@/components/files/DocumentDropzone";
 
 /* ========= Tipos (UI) ========= */
 type Tipo = "Petición" | "Queja" | "Reclamo" | "Sugerencia";
@@ -33,11 +35,10 @@ type Solicitante = {
   tipoDoc?: TipoDoc;
   doc?: string;
 
-  // UI nueva
   nombres?: string;
   apellidos?: string;
 
-  // compatibilidad
+  // compatibilidad legacy
   nombre?: string;
 
   telefono?: string;
@@ -75,24 +76,36 @@ function Button({
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "solid" | "outline" | "ghost";
 }) {
-  const base = "inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm transition";
+  const reduceMotion = useReducedMotion();
+  const base =
+    "inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm transition disabled:opacity-50 disabled:cursor-not-allowed";
   const styles =
     variant === "solid"
-      ? "bg-[var(--brand)] text-white hover:opacity-90"
+      ? "bg-[var(--brand)] text-white hover:opacity-90 disabled:hover:opacity-50"
       : variant === "outline"
-      ? "border border-[var(--subtle)] hover:bg-white"
-      : "hover:bg-white";
+      ? "border border-[var(--subtle)] hover:bg-white disabled:hover:bg-transparent"
+      : "hover:bg-white disabled:hover:bg-transparent";
+
   return (
-    <button className={`${base} ${styles} ${className}`} {...props}>
+    <motion.button
+      whileHover={reduceMotion ? undefined : { scale: 1.01 }}
+      whileTap={reduceMotion ? undefined : { scale: 0.98 }}
+      transition={
+        reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 28 }
+      }
+      className={`${base} ${styles} ${className}`}
+      {...props}
+    >
       {children}
-    </button>
+    </motion.button>
   );
 }
+
 function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
-      className={`h-10 w-full rounded-md border border-[var(--subtle)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 ${props.className || ""}`}
+      className={`h-10 w-full rounded-md border border-[var(--subtle)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 disabled:opacity-60 disabled:cursor-not-allowed ${props.className || ""}`}
     />
   );
 }
@@ -100,7 +113,7 @@ function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select
       {...props}
-      className={`h-10 w-full rounded-md border border-[var(--subtle)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 ${props.className || ""}`}
+      className={`h-10 w-full rounded-md border border-[var(--subtle)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 disabled:opacity-60 disabled:cursor-not-allowed ${props.className || ""}`}
     />
   );
 }
@@ -108,10 +121,11 @@ function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
       {...props}
-      className={`w-full rounded-md border border-[var(--subtle)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 ${props.className || ""}`}
+      className={`w-full rounded-md border border-[var(--subtle)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 disabled:opacity-60 disabled:cursor-not-allowed ${props.className || ""}`}
     />
   );
 }
+
 function Badge({
   children,
   tone = "slate",
@@ -128,11 +142,14 @@ function Badge({
     rose: "bg-rose-100 text-rose-700 border-rose-200",
   } as const;
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${map[tone]}`}>
+    <span
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${map[tone]}`}
+    >
       {children}
     </span>
   );
 }
+
 function Field({
   label,
   hint,
@@ -150,6 +167,7 @@ function Field({
     </label>
   );
 }
+
 function Section({
   icon,
   title,
@@ -170,7 +188,7 @@ function Section({
   );
 }
 
-/* ========= Modal ========= */
+/* ========= Modal (animado) ========= */
 type ModalSize = "md" | "lg" | "xl" | "full";
 function Modal({
   open,
@@ -187,8 +205,7 @@ function Modal({
   actions?: React.ReactNode;
   size?: ModalSize;
 }) {
-  if (!open) return null;
-
+  const reduceMotion = useReducedMotion();
   const widthBySize: Record<ModalSize, string> = {
     md: "w-[min(760px,96vw)]",
     lg: "w-[min(1040px,98vw)]",
@@ -197,28 +214,51 @@ function Modal({
   };
 
   return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div
-        className={[
-          "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
-          widthBySize[size],
-          "max-h-[94vh] rounded-lg border border-[var(--subtle)] bg-[var(--panel)] shadow-xl",
-          "flex flex-col",
-        ].join(" ")}
-      >
-        <div className="flex items-center justify-between border-b border-[var(--subtle)] px-6 py-4">
-          <h4 className="text-base font-semibold">{title}</h4>
-          <button onClick={onClose} className="p-1 rounded hover:bg-slate-100" aria-label="Cerrar">
-            <XCircle size={18} />
-          </button>
+    <AnimatePresence initial={false}>
+      {open && (
+        <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+          <motion.div
+            className="absolute inset-0 bg-black/40"
+            onClick={onClose}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={reduceMotion ? { duration: 0 } : { duration: 0.15 }}
+          />
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            <motion.div
+              initial={reduceMotion ? false : { opacity: 0, y: 12, scale: 0.98 }}
+              animate={reduceMotion ? {} : { opacity: 1, y: 0, scale: 1 }}
+              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.98 }}
+              transition={
+                reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 260, damping: 26 }
+              }
+              className={[
+                widthBySize[size],
+                "max-h-[94vh] rounded-xl border border-[var(--subtle)] bg-[var(--panel)] shadow-2xl",
+                "flex flex-col overflow-hidden",
+              ].join(" ")}
+            >
+              <div className="flex items-center justify-between border-b border-[var(--subtle)] px-6 py-4">
+                <h4 className="text-base font-semibold">{title}</h4>
+                <button
+                  onClick={onClose}
+                  className="p-1 rounded hover:bg-slate-100"
+                  aria-label="Cerrar"
+                  type="button"
+                >
+                  <XCircle size={18} />
+                </button>
+              </div>
+              <div className="flex-1 p-6 overflow-y-auto">{children}</div>
+              <div className="flex items-center justify-end gap-2 border-t border-[var(--subtle)] px-6 py-4">
+                {actions}
+              </div>
+            </motion.div>
+          </div>
         </div>
-        <div className="flex-1 p-6 overflow-y-auto">{children}</div>
-        <div className="flex items-center justify-end gap-2 border-t border-[var(--subtle)] px-6 py-4">
-          {actions}
-        </div>
-      </div>
-    </div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -236,7 +276,18 @@ const fullName = (s?: Solicitante) => {
   const a = (s?.nombres ?? "").trim();
   const b = (s?.apellidos ?? "").trim();
   const legacy = (s?.nombre ?? "").trim();
-  return (a || b) ? [a, b].filter(Boolean).join(" ") : legacy;
+  return a || b ? [a, b].filter(Boolean).join(" ") : legacy;
+};
+
+const dedupeAdj = (arr: Adj[]) => {
+  const seen = new Set<string>();
+  return (arr || []).filter((a) => {
+    const key = `${a?.name ?? ""}__${a?.size ?? 0}`;
+    if (!a?.name) return false;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 };
 
 /* ========= Mapas desde backend ========= */
@@ -286,7 +337,12 @@ function fromDb(r: any): PQRS {
     vencimiento: r.vencimiento ? r.vencimiento.slice(0, 10) : undefined,
     adjuntos: Array.isArray(r.adjuntos) ? r.adjuntos : [],
     historial: Array.isArray(r.historial) ? r.historial : [],
-    beneficiarioId: typeof r.beneficiarioId === "number" ? r.beneficiarioId : (r.beneficiarioId ? Number(r.beneficiarioId) : null),
+    beneficiarioId:
+      typeof r.beneficiarioId === "number"
+        ? r.beneficiarioId
+        : r.beneficiarioId
+        ? Number(r.beneficiarioId)
+        : null,
   };
 }
 
@@ -302,26 +358,22 @@ function normalizeForApi(p: PQRS) {
   const nombre = fullName(p.solicitante);
   return {
     ...p,
-    solicitante: {
-      ...p.solicitante,
-      nombre, // ✅ para schemas que esperan "nombre"
-    },
-    // ✅ asegura nullables
+    solicitante: { ...p.solicitante, nombre },
     responsable: p.responsable ?? null,
     vencimiento: p.vencimiento ?? null,
     beneficiarioId: typeof p.beneficiarioId === "number" ? p.beneficiarioId : null,
+    adjuntos: dedupeAdj(p.adjuntos || []),
   };
 }
 
 async function apiCreate(p: PQRS) {
   const payload = normalizeForApi(p);
-  // ✅ en CREATE no mandes id
   const { id, ...rest } = payload as any;
 
   const resp = await fetch("/api/pqrs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(rest), // ✅ manda UI ("Petición", etc)
+    body: JSON.stringify(rest),
   });
   if (!resp.ok) throw new Error(await resp.text());
   return resp.json();
@@ -334,7 +386,7 @@ async function apiUpdate(p: PQRS) {
   const resp = await fetch(`/api/pqrs/${p.id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload), // ✅ manda UI ("En trámite", etc)
+    body: JSON.stringify(payload),
   });
   if (!resp.ok) throw new Error(await resp.text());
   return resp.json();
@@ -343,6 +395,8 @@ async function apiUpdate(p: PQRS) {
 /* ========= Página ========= */
 export default function PQRSPage() {
   const title = "PQRS";
+  const reduceMotion = useReducedMotion();
+
   const [rows, setRows] = useState<PQRS[]>([]);
   const [q, setQ] = useState("");
   const [fEstado, setFEstado] = useState<"" | Estado>("");
@@ -351,7 +405,7 @@ export default function PQRSPage() {
   const [editing, setEditing] = useState<PQRS | null>(null);
 
   const [closeOpen, setCloseOpen] = useState(false);
-  const [selectedPqrs, setSelectedPqrs] = useState<{ id: number; radicado?: string } | null>(null);
+  const [selectedPqrs, setSelectedPqrs] = useState<{ id: number; radicado?: string; estado?: Estado } | null>(null);
 
   useEffect(() => {
     load(setRows).catch(() => toast.error("No se pudo cargar la lista"));
@@ -362,13 +416,7 @@ export default function PQRSPage() {
     return rows.filter((r) => {
       const byQ =
         !t ||
-        [
-          r.radicado,
-          r.asunto,
-          fullName(r.solicitante) || "",
-          r.solicitante?.doc || "",
-          r.responsable || "",
-        ]
+        [r.radicado, r.asunto, fullName(r.solicitante) || "", r.solicitante?.doc || "", r.responsable || ""]
           .join(" ")
           .toLowerCase()
           .includes(t);
@@ -401,12 +449,21 @@ export default function PQRSPage() {
   };
 
   const startEdit = (row: PQRS) => {
+    if (row.estado === "Cerrada") {
+      toast("PQRS cerrada: no se puede editar.");
+      return;
+    }
     setEditing(JSON.parse(JSON.stringify(row)));
     setOpen(true);
   };
 
   const save = async () => {
     if (!editing) return;
+
+    if (editing.estado === "Cerrada") {
+      toast("PQRS cerrada: no se puede guardar cambios.");
+      return;
+    }
 
     if (!editing.asunto?.trim()) return toast.error("El asunto es obligatorio");
     if (!editing.descripcion?.trim()) return toast.error("La descripción es obligatoria");
@@ -429,46 +486,32 @@ export default function PQRSPage() {
       });
       await load(setRows);
       setOpen(false);
-    } catch {
-      /* toast.promise ya mostró el error */
-    }
+    } catch {}
   };
 
   const abrirSeguimiento = (row: PQRS) => {
     if (!row.id) return;
-    setSelectedPqrs({ id: row.id, radicado: row.radicado });
+    setSelectedPqrs({ id: row.id, radicado: row.radicado, estado: row.estado });
     setCloseOpen(true);
-  };
-
-  const cambiarEstado = async (row: PQRS, estado: Estado) => {
-    if (!row.id) return;
-    try {
-      await toast.promise(
-        fetch(`/api/pqrs/${row.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ estado }), // ✅ manda UI, tu API lo mapea
-        }),
-        {
-          loading: "Actualizando estado...",
-          success: "Estado actualizado",
-          error: "No se pudo actualizar el estado",
-        }
-      );
-      await load(setRows);
-    } catch {}
   };
 
   const tone = (e: Estado) => estadoTone(e);
 
   return (
     <DashboardShell title={title}>
-      <div className="rounded-md border border-[var(--subtle)] bg-[var(--panel)]">
+      <motion.div
+        layout
+        initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+        animate={reduceMotion ? {} : { opacity: 1, y: 0 }}
+        transition={reduceMotion ? { duration: 0 } : { duration: 0.18 }}
+        className="rounded-md border border-[var(--subtle)] bg-[var(--panel)]"
+      >
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--subtle)] px-4 py-3">
           <div className="flex items-center gap-2">
             <MessageSquare size={18} className="text-[var(--brand)]" />
             <h3 className="text-sm font-semibold">{title}</h3>
           </div>
+
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
               <Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
@@ -483,14 +526,18 @@ export default function PQRSPage() {
             <Select value={fEstado} onChange={(e) => setFEstado(e.target.value as Estado | "")}>
               <option value="">Estado: Todos</option>
               {(["Abierta", "En trámite", "Re Abierto", "Cerrada"] as Estado[]).map((s) => (
-                <option key={s} value={s}>{s}</option>
+                <option key={s} value={s}>
+                  {s}
+                </option>
               ))}
             </Select>
 
             <Select value={fTipo} onChange={(e) => setFTipo(e.target.value as Tipo | "")}>
               <option value="">Tipo: Todos</option>
               {(["Petición", "Queja", "Reclamo", "Sugerencia"] as Tipo[]).map((t) => (
-                <option key={t} value={t}>{t}</option>
+                <option key={t} value={t}>
+                  {t}
+                </option>
               ))}
             </Select>
 
@@ -514,82 +561,99 @@ export default function PQRSPage() {
                 <th className="w-56 px-3 py-2 text-left">Acciones</th>
               </tr>
             </thead>
+
             <tbody>
-              {filtered.map((r) => {
-                const toneSLA =
-                  r.estado === "Cerrada"
-                    ? "slate"
-                    : r.vencimiento && new Date(r.vencimiento) < new Date()
-                    ? "rose"
-                    : "emerald";
+              <AnimatePresence initial={false}>
+                {filtered.map((r) => {
+                  const isClosed = r.estado === "Cerrada";
 
-                const nombre = fullName(r.solicitante) || "—";
+                  const toneSLA =
+                    r.estado === "Cerrada"
+                      ? "slate"
+                      : r.vencimiento && new Date(r.vencimiento) < new Date()
+                      ? "rose"
+                      : "emerald";
 
-                return (
-                  <tr key={r.id ?? r.radicado} className="border-b border-[var(--subtle)]/70">
-                    <td className="py-2 pl-4 pr-3 font-medium">{r.radicado}</td>
-                    <td className="px-3 py-2">{r.fecha}</td>
-                    <td className="px-3 py-2">{r.tipo}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-2">
-                        <User size={14} className="text-slate-400" />
-                        <span>{nombre}</span>
-                        {r.solicitante?.doc && (
-                          <Badge tone="slate">
-                            {r.solicitante?.tipoDoc ? r.solicitante.tipoDoc + " " : ""}
-                            {r.solicitante.doc}
-                          </Badge>
+                  const nombre = fullName(r.solicitante) || "—";
+
+                  return (
+                    <motion.tr
+                      key={r.id ?? r.radicado}
+                      layout
+                      initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+                      animate={reduceMotion ? {} : { opacity: 1, y: 0 }}
+                      exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+                      transition={reduceMotion ? { duration: 0 } : { duration: 0.14 }}
+                      className="border-b border-[var(--subtle)]/70"
+                    >
+                      <td className="py-2 pl-4 pr-3 font-medium">{r.radicado}</td>
+                      <td className="px-3 py-2">{r.fecha}</td>
+                      <td className="px-3 py-2">{r.tipo}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <User size={14} className="text-slate-400" />
+                          <span>{nombre}</span>
+                          {r.solicitante?.doc && (
+                            <Badge tone="slate">
+                              {r.solicitante?.tipoDoc ? r.solicitante.tipoDoc + " " : ""}
+                              {r.solicitante.doc}
+                            </Badge>
+                          )}
+                          {typeof r.beneficiarioId === "number" && r.beneficiarioId > 0 && (
+                            <Badge tone="emerald">Beneficiario vinculado</Badge>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <Badge tone={tone(r.estado)}>{r.estado}</Badge>
+                      </td>
+                      <td className="px-3 py-2">{r.responsable || "—"}</td>
+                      <td className="px-3 py-2">
+                        {r.vencimiento ? (
+                          <span className="inline-flex items-center gap-1">
+                            <Clock size={14} className="text-slate-400" />
+                            <Badge tone={toneSLA}>{r.vencimiento}</Badge>
+                          </span>
+                        ) : (
+                          "—"
                         )}
-                        {typeof r.beneficiarioId === "number" && r.beneficiarioId > 0 && (
-                          <Badge tone="emerald">Beneficiario vinculado</Badge>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      <Badge tone={tone(r.estado)}>{r.estado}</Badge>
-                    </td>
-                    <td className="px-3 py-2">{r.responsable || "—"}</td>
-                    <td className="px-3 py-2">
-                      {r.vencimiento ? (
-                        <span className="inline-flex items-center gap-1">
-                          <Clock size={14} className="text-slate-400" />
-                          <Badge tone={toneSLA}>{r.vencimiento}</Badge>
-                        </span>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button variant="outline" onClick={() => startEdit(r)}>
-                          <Pencil size={14} /> Detalle
-                        </Button>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={() => startEdit(r)}
+                            disabled={isClosed}
+                            title={isClosed ? "PQRS cerrada: no se puede editar" : "Detalle"}
+                          >
+                            <Pencil size={14} /> Detalle
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => abrirSeguimiento(r)}
+                            className="h-8 px-3 rounded-md shadow-sm border-slate-200 hover:bg-white"
+                            title="Abrir seguimiento"
+                          >
+                            <MessageSquare size={14} /> Seguimiento
+                          </Button>
+                        </div>
+                      </td>
+                    </motion.tr>
+                  );
+                })}
 
-                        <Button
-                          variant="outline"
-                          onClick={() => abrirSeguimiento(r)}
-                          className="h-8 px-3 rounded-md shadow-sm border-slate-200 hover:bg-white"
-                          title="Abrir seguimiento"
-                        >
-                          <MessageSquare size={14} /> Seguimiento
-                        </Button>
-                      </div>
+                {filtered.length === 0 && (
+                  <motion.tr key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                    <td colSpan={8} className="py-6 text-center text-slate-500">
+                      Sin resultados.
                     </td>
-                  </tr>
-                );
-              })}
-
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="py-6 text-center text-slate-500">
-                    Sin resultados.
-                  </td>
-                </tr>
-              )}
+                  </motion.tr>
+                )}
+              </AnimatePresence>
             </tbody>
           </table>
         </div>
-      </div>
+      </motion.div>
 
       <PQRSModal open={open} setOpen={setOpen} editing={editing} setEditing={setEditing} onSave={save} />
 
@@ -599,6 +663,7 @@ export default function PQRSPage() {
         pqrsId={selectedPqrs?.id ?? null}
         radicado={selectedPqrs?.radicado}
         mode="seguimiento"
+        locked={selectedPqrs?.estado === "Cerrada"}
         onUpdated={async () => {
           await load(setRows);
           toast.success("Seguimiento guardado");
@@ -624,33 +689,64 @@ function PQRSModal({
   open: boolean;
   setOpen: (v: boolean) => void;
   editing: PQRS | null;
-  setEditing: (p: PQRS | null) => void;
+  setEditing: React.Dispatch<React.SetStateAction<PQRS | null>>;
   onSave: () => void;
 }) {
   const [benefLoading, setBenefLoading] = useState(false);
   const [benefLast, setBenefLast] = useState<"idle" | "found" | "notfound" | "created">("idle");
 
+  const [adjSaved, setAdjSaved] = useState<Adj[]>([]);
+  const [adjNew, setAdjNew] = useState<File[]>([]);
+
+  useEffect(() => {
+    if (!editing) return;
+    setAdjSaved(Array.isArray(editing.adjuntos) ? editing.adjuntos : []);
+    setAdjNew([]);
+    setBenefLast("idle");
+  }, [editing?.id, open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!editing) return;
+
+    const saved = (adjSaved || [])
+      .map((a) => ({
+        name: String(a?.name ?? "").trim(),
+        size: typeof a?.size === "number" ? a.size : undefined,
+        url: a?.url,
+        mime: a?.mime,
+      }))
+      .filter((a) => a.name);
+
+    const news: Adj[] = (adjNew || []).map((f) => ({
+      name: f.name,
+      size: f.size,
+      mime: f.type || undefined,
+    }));
+
+    const merged = dedupeAdj([...saved, ...news]);
+
+    setEditing((prev) => (prev ? { ...prev, adjuntos: merged } : prev));
+  }, [adjSaved, adjNew]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!editing) return null;
 
-  const onAdj = (files: FileList | null) => {
-    if (!files) return;
-    const arr = Array.from(files).map((f) => ({ name: f.name, size: f.size }));
-    setEditing({ ...editing, adjuntos: [...editing.adjuntos, ...arr] });
-  };
+  const isClosed = editing.estado === "Cerrada";
 
-  const rmAdj = (name: string) =>
-    setEditing({ ...editing, adjuntos: editing.adjuntos.filter((a) => a.name !== name) });
+  const rmSaved = (name: string) => setAdjSaved((prev) => prev.filter((a) => a.name !== name));
 
   const addHist = () =>
-    setEditing({
-      ...editing,
-      historial: [
-        ...editing.historial,
-        { fecha: new Date().toISOString().slice(0, 10), evento: "Nota agregada" },
-      ],
-    });
+    setEditing((prev) =>
+      prev
+        ? {
+            ...prev,
+            historial: [...prev.historial, { fecha: today(), evento: "Nota agregada" }],
+          }
+        : prev
+    );
 
   const buscarBeneficiario = async () => {
+    if (isClosed) return toast("PQRS cerrada: no se permite modificar.");
+
     const tipo = editing.solicitante?.tipoDoc || "CC";
     const doc = (editing.solicitante?.doc || "").trim();
 
@@ -672,74 +768,34 @@ function PQRSModal({
 
       if (!data) {
         setBenefLast("notfound");
-        setEditing({ ...editing, beneficiarioId: null });
+        setEditing((prev) => (prev ? { ...prev, beneficiarioId: null } : prev));
         return toast("No existe. Puedes crearlo con el botón 'Crear beneficiario'.");
       }
 
       const benefId = typeof data.id === "number" ? data.id : Number(data.id);
       setBenefLast("found");
 
-      setEditing({
-        ...editing,
-        beneficiarioId: Number.isFinite(benefId) ? benefId : null,
-        solicitante: {
-          ...editing.solicitante,
-          tipoDoc: (data.tipo_doc ?? editing.solicitante?.tipoDoc ?? "CC") as TipoDoc,
-          doc: data.num_doc ?? editing.solicitante?.doc ?? "",
-          nombres: data.nombres ?? editing.solicitante?.nombres ?? "",
-          apellidos: data.apellidos ?? editing.solicitante?.apellidos ?? "",
-          telefono: data.telefono ?? editing.solicitante?.telefono ?? "",
-          email: data.email ?? editing.solicitante?.email ?? "",
-        },
-      });
+      setEditing((prev) =>
+        prev
+          ? {
+              ...prev,
+              beneficiarioId: Number.isFinite(benefId) ? benefId : null,
+              solicitante: {
+                ...prev.solicitante,
+                tipoDoc: (data.tipo_doc ?? prev.solicitante?.tipoDoc ?? "CC") as TipoDoc,
+                doc: data.num_doc ?? prev.solicitante?.doc ?? "",
+                nombres: data.nombres ?? prev.solicitante?.nombres ?? "",
+                apellidos: data.apellidos ?? prev.solicitante?.apellidos ?? "",
+                telefono: data.telefono ?? prev.solicitante?.telefono ?? "",
+                email: data.email ?? prev.solicitante?.email ?? "",
+              },
+            }
+          : prev
+      );
 
       toast.success("Beneficiario encontrado y vinculado ✅");
     } catch (e: any) {
       toast.error(e?.message ?? "Error buscando beneficiario");
-    } finally {
-      setBenefLoading(false);
-    }
-  };
-
-  const crearBeneficiario = async () => {
-    const tipo = editing.solicitante?.tipoDoc || "CC";
-    const doc = (editing.solicitante?.doc || "").trim();
-    const nombres = (editing.solicitante?.nombres || "").trim();
-    const apellidos = (editing.solicitante?.apellidos || "").trim();
-
-    if (!tipo || !doc) return toast.error("Falta tipo/doc del beneficiario.");
-    if (!nombres) return toast.error("Faltan los nombres.");
-    if (!apellidos) return toast.error("Faltan los apellidos.");
-
-    try {
-      setBenefLoading(true);
-
-      const payload = {
-        tipo_doc: tipo,
-        num_doc: doc,
-        nombres,
-        apellidos,
-        telefono: editing.solicitante?.telefono ?? "",
-        email: editing.solicitante?.email ?? "",
-      };
-
-      const res = await fetch("/api/beneficiarios", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j?.error ?? "No se pudo crear el beneficiario.");
-
-      const benefId = typeof j.id === "number" ? j.id : Number(j.id);
-
-      setBenefLast("created");
-      setEditing({ ...editing, beneficiarioId: Number.isFinite(benefId) ? benefId : null });
-
-      toast.success("Beneficiario creado y vinculado ✅");
-    } catch (e: any) {
-      toast.error(e?.message ?? "Error creando beneficiario");
     } finally {
       setBenefLoading(false);
     }
@@ -753,35 +809,63 @@ function PQRSModal({
       size="xl"
       actions={
         <>
-          <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
-          <Button onClick={onSave}>Guardar</Button>
+          <Button variant="ghost" onClick={() => setOpen(false)} type="button">
+            Cancelar
+          </Button>
+          <Button onClick={onSave} type="button" disabled={isClosed} title={isClosed ? "PQRS cerrada: no se puede guardar" : "Guardar"}>
+            Guardar
+          </Button>
         </>
       }
     >
+      {isClosed && (
+        <div className="px-3 py-2 mb-4 text-sm border rounded-md border-slate-200 bg-slate-50 text-slate-700">
+          Este PQRS está <b>cerrado</b>. No se permite editar ni agregar seguimiento.
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-4 2xl:grid-cols-5">
         <div className="grid gap-4 lg:col-span-3 2xl:col-span-3">
           <Section icon={<FileText size={18} />} title="Datos">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <Field label="Tipo">
-                <Select value={editing.tipo} onChange={(e) => setEditing({ ...editing, tipo: e.target.value as Tipo })}>
+                <Select
+                  value={editing.tipo}
+                  disabled={isClosed}
+                  onChange={(e) => setEditing((prev) => (prev ? { ...prev, tipo: e.target.value as Tipo } : prev))}
+                >
                   {(["Petición", "Queja", "Reclamo", "Sugerencia"] as Tipo[]).map((t) => (
-                    <option key={t} value={t}>{t}</option>
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
                   ))}
                 </Select>
               </Field>
 
               <Field label="Estado">
-                <Select value={editing.estado} onChange={(e) => setEditing({ ...editing, estado: e.target.value as Estado })}>
+                <Select
+                  value={editing.estado}
+                  disabled={isClosed}
+                  onChange={(e) => setEditing((prev) => (prev ? { ...prev, estado: e.target.value as Estado } : prev))}
+                >
                   {(["Abierta", "En trámite", "Re Abierto", "Cerrada"] as Estado[]).map((s) => (
-                    <option key={s} value={s}>{s}</option>
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
                   ))}
                 </Select>
               </Field>
 
               <Field label="Canal">
-                <Select value={editing.canal} onChange={(e) => setEditing({ ...editing, canal: e.target.value as Canal })}>
+                <Select
+                  value={editing.canal}
+                  disabled={isClosed}
+                  onChange={(e) => setEditing((prev) => (prev ? { ...prev, canal: e.target.value as Canal } : prev))}
+                >
                   {(["Web", "Teléfono", "Presencial", "Email"] as Canal[]).map((c) => (
-                    <option key={c} value={c}>{c}</option>
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
                   ))}
                 </Select>
               </Field>
@@ -789,44 +873,81 @@ function PQRSModal({
               <Field label="Origen">
                 <Select
                   value={editing.origen}
+                  disabled={isClosed}
                   onChange={(e) => {
                     const val = e.target.value as Origen;
-                    setEditing({ ...editing, origen: val, beneficiarioId: val === "Tercero" ? null : editing.beneficiarioId ?? null });
+                    setEditing((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            origen: val,
+                            beneficiarioId: val === "Tercero" ? null : prev.beneficiarioId ?? null,
+                          }
+                        : prev
+                    );
                   }}
                 >
                   {(["Beneficiario", "Tercero"] as Origen[]).map((o) => (
-                    <option key={o} value={o}>{o}</option>
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
                   ))}
                 </Select>
               </Field>
 
               <Field label="Responsable">
-                <Input value={editing.responsable || ""} onChange={(e) => setEditing({ ...editing, responsable: e.target.value })} />
+                <Input
+                  value={editing.responsable || ""}
+                  disabled={isClosed}
+                  onChange={(e) => setEditing((prev) => (prev ? { ...prev, responsable: e.target.value } : prev))}
+                />
               </Field>
 
               <Field label="Vencimiento (SLA)">
-                <Input type="date" value={editing.vencimiento || ""} onChange={(e) => setEditing({ ...editing, vencimiento: e.target.value })} />
+                <Input
+                  type="date"
+                  value={editing.vencimiento || ""}
+                  disabled={isClosed}
+                  onChange={(e) => setEditing((prev) => (prev ? { ...prev, vencimiento: e.target.value } : prev))}
+                />
               </Field>
 
               <div className="md:col-span-3">
                 <Field label="Asunto">
-                  <Textarea rows={3} value={editing.asunto} onChange={(e) => setEditing({ ...editing, asunto: e.target.value })} />
+                  <Textarea
+                    rows={3}
+                    value={editing.asunto}
+                    disabled={isClosed}
+                    onChange={(e) => setEditing((prev) => (prev ? { ...prev, asunto: e.target.value } : prev))}
+                  />
                 </Field>
               </div>
 
               <div className="md:col-span-3">
                 <Field label="Descripción">
-                  <Textarea rows={4} value={editing.descripcion} onChange={(e) => setEditing({ ...editing, descripcion: e.target.value })} />
+                  <Textarea
+                    rows={4}
+                    value={editing.descripcion}
+                    disabled={isClosed}
+                    onChange={(e) =>
+                      setEditing((prev) => (prev ? { ...prev, descripcion: e.target.value } : prev))
+                    }
+                  />
                 </Field>
               </div>
             </div>
           </Section>
 
-          <Section icon={<Paperclip size={18} />} title="Adjuntos">
+          <Section icon={<Paperclip size={18} />} title="Adjuntos (Dropzone)">
             <div className="grid gap-3">
-              <input type="file" multiple onChange={(e) => onAdj(e.target.files)} />
-              {editing.adjuntos.length > 0 && (
-                <div className="overflow-x-auto">
+              <DocumentDropzone value={adjNew} onChange={setAdjNew} maxFiles={10} maxSizeMB={10} disabled={isClosed} />
+
+              <div className="text-xs text-slate-500">
+                En esta versión se guarda la lista/metadata. Si quieres descarga real, luego lo conectamos a storage.
+              </div>
+
+              {adjSaved.length > 0 && (
+                <div className="overflow-x-auto rounded-md border border-[var(--subtle)] bg-white">
                   <table className="min-w-full text-sm">
                     <thead className="border-b border-[var(--subtle)] text-slate-500">
                       <tr>
@@ -836,12 +957,23 @@ function PQRSModal({
                       </tr>
                     </thead>
                     <tbody>
-                      {editing.adjuntos.map((a) => (
-                        <tr key={a.name} className="border-b border-[var(--subtle)]/70">
+                      {adjSaved.map((a, idx) => (
+                        <tr
+                          key={`${a.name}-${a.size ?? 0}-${idx}`}
+                          className="border-b border-[var(--subtle)]/70 last:border-b-0"
+                        >
                           <td className="px-3 py-2">{a.name}</td>
                           <td className="px-3 py-2">{a.size ? (a.size / 1024).toFixed(1) + " KB" : "—"}</td>
                           <td className="px-3 py-2">
-                            <Button variant="ghost" onClick={() => rmAdj(a.name)}>Quitar</Button>
+                            <Button
+                              variant="ghost"
+                              type="button"
+                              onClick={() => rmSaved(a.name)}
+                              disabled={isClosed}
+                              title={isClosed ? "PQRS cerrada" : "Quitar adjunto"}
+                            >
+                              Quitar
+                            </Button>
                           </td>
                         </tr>
                       ))}
@@ -858,7 +990,11 @@ function PQRSModal({
             <div className="grid gap-4">
               <div className="flex items-center gap-2">
                 {editing.origen === "Beneficiario" ? (
-                  editing.beneficiarioId ? <Badge tone="emerald">Beneficiario vinculado</Badge> : <Badge tone="amber">Sin vincular</Badge>
+                  editing.beneficiarioId ? (
+                    <Badge tone="emerald">Beneficiario vinculado</Badge>
+                  ) : (
+                    <Badge tone="amber">Sin vincular</Badge>
+                  )
                 ) : (
                   <Badge tone="slate">Origen: Tercero</Badge>
                 )}
@@ -868,10 +1004,17 @@ function PQRSModal({
                 <Field label="Tipo de documento">
                   <Select
                     value={editing.solicitante?.tipoDoc || "CC"}
-                    onChange={(e) => setEditing({ ...editing, solicitante: { ...editing.solicitante, tipoDoc: e.target.value as TipoDoc } })}
+                    disabled={isClosed}
+                    onChange={(e) =>
+                      setEditing((prev) =>
+                        prev ? { ...prev, solicitante: { ...prev.solicitante, tipoDoc: e.target.value as TipoDoc } } : prev
+                      )
+                    }
                   >
-                    {(["CC","TI","CE","RC","PA","PEP","PPT","NIT","OTRO"] as TipoDoc[]).map((t) => (
-                      <option key={t} value={t}>{t}</option>
+                    {(["CC", "TI", "CE", "RC", "PA", "PEP", "PPT", "NIT", "OTRO"] as TipoDoc[]).map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
                     ))}
                   </Select>
                 </Field>
@@ -879,7 +1022,12 @@ function PQRSModal({
                 <Field label="Documento">
                   <Input
                     value={editing.solicitante?.doc || ""}
-                    onChange={(e) => setEditing({ ...editing, solicitante: { ...editing.solicitante, doc: e.target.value } })}
+                    disabled={isClosed}
+                    onChange={(e) =>
+                      setEditing((prev) =>
+                        prev ? { ...prev, solicitante: { ...prev.solicitante, doc: e.target.value } } : prev
+                      )
+                    }
                     placeholder="Número"
                   />
                 </Field>
@@ -887,12 +1035,16 @@ function PQRSModal({
 
               {editing.origen === "Beneficiario" && (
                 <div className="flex flex-wrap items-center gap-2">
-                  <Button variant="outline" type="button" onClick={buscarBeneficiario} disabled={benefLoading}>
+                  <Button
+                    variant="outline"
+                    type="button"
+                    onClick={buscarBeneficiario}
+                    disabled={benefLoading || isClosed}
+                    title={isClosed ? "PQRS cerrada" : "Buscar beneficiario"}
+                  >
                     <Search size={14} /> {benefLoading ? "Buscando..." : "Buscar beneficiario"}
                   </Button>
-                  <Button variant="outline" type="button" onClick={crearBeneficiario} disabled={benefLoading}>
-                    <Plus size={14} /> Crear beneficiario
-                  </Button>
+
                   {benefLast === "notfound" && <Badge tone="rose">No existe</Badge>}
                   {benefLast === "found" && <Badge tone="emerald">Encontrado</Badge>}
                   {benefLast === "created" && <Badge tone="emerald">Creado</Badge>}
@@ -901,19 +1053,60 @@ function PQRSModal({
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <Field label="Nombres">
-                  <Input value={editing.solicitante?.nombres || ""} onChange={(e) => setEditing({ ...editing, solicitante: { ...editing.solicitante, nombres: e.target.value } })} />
+                  <Input
+                    value={editing.solicitante?.nombres || ""}
+                    disabled={isClosed}
+                    onChange={(e) =>
+                      setEditing((prev) =>
+                        prev
+                          ? { ...prev, solicitante: { ...prev.solicitante, nombres: e.target.value } }
+                          : prev
+                      )
+                    }
+                  />
                 </Field>
                 <Field label="Apellidos">
-                  <Input value={editing.solicitante?.apellidos || ""} onChange={(e) => setEditing({ ...editing, solicitante: { ...editing.solicitante, apellidos: e.target.value } })} />
+                  <Input
+                    value={editing.solicitante?.apellidos || ""}
+                    disabled={isClosed}
+                    onChange={(e) =>
+                      setEditing((prev) =>
+                        prev
+                          ? { ...prev, solicitante: { ...prev.solicitante, apellidos: e.target.value } }
+                          : prev
+                      )
+                    }
+                  />
                 </Field>
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <Field label="Teléfono">
-                  <Input value={editing.solicitante?.telefono || ""} onChange={(e) => setEditing({ ...editing, solicitante: { ...editing.solicitante, telefono: e.target.value } })} />
+                  <Input
+                    value={editing.solicitante?.telefono || ""}
+                    disabled={isClosed}
+                    onChange={(e) =>
+                      setEditing((prev) =>
+                        prev
+                          ? { ...prev, solicitante: { ...prev.solicitante, telefono: e.target.value } }
+                          : prev
+                      )
+                    }
+                  />
                 </Field>
                 <Field label="Email">
-                  <Input type="email" value={editing.solicitante?.email || ""} onChange={(e) => setEditing({ ...editing, solicitante: { ...editing.solicitante, email: e.target.value } })} />
+                  <Input
+                    type="email"
+                    value={editing.solicitante?.email || ""}
+                    disabled={isClosed}
+                    onChange={(e) =>
+                      setEditing((prev) =>
+                        prev
+                          ? { ...prev, solicitante: { ...prev.solicitante, email: e.target.value } }
+                          : prev
+                      )
+                    }
+                  />
                 </Field>
               </div>
             </div>
@@ -937,14 +1130,27 @@ function PQRSModal({
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
+                  type="button"
+                  disabled={isClosed}
+                  title={isClosed ? "PQRS cerrada" : "Añadir nota rápida"}
                   onClick={() => {
+                    if (isClosed) return;
                     addHist();
                     toast.success("Nota añadida");
                   }}
                 >
                   Añadir nota rápida
                 </Button>
-                <Button variant="ghost" onClick={() => toast("Responsable asignado")}>
+                <Button
+                  variant="ghost"
+                  type="button"
+                  disabled={isClosed}
+                  title={isClosed ? "PQRS cerrada" : "Asignar"}
+                  onClick={() => {
+                    if (isClosed) return;
+                    toast("Responsable asignado");
+                  }}
+                >
                   <Pencil size={14} /> Asignar
                 </Button>
               </div>

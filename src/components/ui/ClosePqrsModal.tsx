@@ -48,6 +48,7 @@ export default function ClosePqrsModal({
   mode = "seguimiento",
   onUpdated,
   onClosed,
+  locked, // ✅ opcional: si lo pasas desde PQRSPage
 }: {
   open: boolean;
   onClose: () => void;
@@ -56,6 +57,7 @@ export default function ClosePqrsModal({
   mode?: Mode;
   onUpdated?: () => void;
   onClosed?: () => void;
+  locked?: boolean; // ✅ nuevo
 }) {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PQRS | null>(null);
@@ -79,40 +81,39 @@ export default function ClosePqrsModal({
 
   /* ===== Cargar detalle y normalizar ===== */
   const load = async () => {
-  if (!pqrsId) {
-    toast.error("Falta el id de la PQR");
-    return;
-  }
-  try {
-    setLoading(true);
-    const url = `/api/pqrs/${encodeURIComponent(String(pqrsId))}`;
-    const r = await fetch(url, { cache: "no-store" });
-    if (!r.ok) {
-      const txt = await r.text().catch(() => "");
-      throw new Error(`GET ${url} → ${r.status} ${txt || ""}`.trim());
+    if (!pqrsId) {
+      toast.error("Falta el id de la PQR");
+      return;
     }
-    const j = await r.json();
+    try {
+      setLoading(true);
+      const url = `/api/pqrs/${encodeURIComponent(String(pqrsId))}`;
+      const r = await fetch(url, { cache: "no-store" });
+      if (!r.ok) {
+        const txt = await r.text().catch(() => "");
+        throw new Error(`GET ${url} → ${r.status} ${txt || ""}`.trim());
+      }
+      const j = await r.json();
 
-    const estadoUI = toUIEstado(j.estado ?? j.status);
-    const hist: Evento[] = Array.isArray(j.historial) ? j.historial : [];
+      const estadoUI = toUIEstado(j.estado ?? j.status);
+      const hist: Evento[] = Array.isArray(j.historial) ? j.historial : [];
 
-    setData({
-      id: j.id,
-      radicado: j.radicado,
-      estado: estadoUI,
-      responsable: j.responsable ?? "",
-      historial: hist,
-    });
-    setResponsable(j.responsable ?? "");
-    setEstado(estadoUI);
-  } catch (e: any) {
-    console.error(e);
-    toast.error(e?.message || "No se pudo cargar el detalle");
-  } finally {
-    setLoading(false);
-  }
-};
-
+      setData({
+        id: j.id,
+        radicado: j.radicado,
+        estado: estadoUI,
+        responsable: j.responsable ?? "",
+        historial: hist,
+      });
+      setResponsable(j.responsable ?? "");
+      setEstado(estadoUI);
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e?.message || "No se pudo cargar el detalle");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -125,9 +126,18 @@ export default function ClosePqrsModal({
 
   if (!open) return null;
 
+  // ✅ BLOQUEO: si está CERRADA y estás en modo seguimiento, todo en gris excepto REABRIR
+  const lockedUI = (locked ?? false) || (mode === "seguimiento" && data?.estado === "Cerrada");
+
   /* ===== Acciones ===== */
   const saveSeguimiento = async () => {
     if (!data) return;
+
+    // ✅ si está bloqueado, no guardar
+    if (lockedUI) {
+      toast("La PQRS está cerrada. Para agregar seguimiento debes reabrirla.");
+      return;
+    }
 
     const nuevoEvento: Evento | null = nota.trim()
       ? { fecha: today(), evento: "Seguimiento", nota: nota.trim() }
@@ -135,8 +145,8 @@ export default function ClosePqrsModal({
 
     const payload: any = {
       responsable,
-      estado,              // etiqueta UI (por si tu API la acepta)
-      status: estado       // enum/alias (por si tu API usa status y lo normaliza)
+      estado, // etiqueta UI (por si tu API la acepta)
+      status: estado, // alias (por si tu API usa status y lo normaliza)
     };
     if (nuevoEvento) payload.historial = [...(data.historial || []), nuevoEvento];
 
@@ -204,16 +214,12 @@ export default function ClosePqrsModal({
     const reason = reopenReason.trim();
     if (!reason) return toast.error("Indica el motivo de reapertura");
 
-    const hist = [
-      ...(data.historial || []),
-      { fecha: today(), evento: "Reabierta", nota: reason },
-    ];
+    const hist = [...(data.historial || []), { fecha: today(), evento: "Reabierta", nota: reason }];
 
     try {
       const res = await fetch(`/api/pqrs/${data.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        // Mandamos ambas claves por compatibilidad con tu API
         body: JSON.stringify({
           estado: "RE_ABIERTO",
           status: "RE_ABIERTO",
@@ -230,11 +236,10 @@ export default function ClosePqrsModal({
       setAskReopen(false);
       setReopenReason("");
 
-      // refresca desde backend
       await load();
       onUpdated?.();
 
-      // Fallback visual inmediato
+      // fallback visual inmediato
       setData((curr) => (curr ? { ...curr, estado: "Re Abierto", historial: hist } : curr));
       setEstado("Re Abierto");
     } catch (e: any) {
@@ -254,7 +259,9 @@ export default function ClosePqrsModal({
             <MessageSquare size={18} className="text-[var(--brand)]" />
             <h4 className="text-sm font-semibold">{title}</h4>
             {data?.estado === "Cerrada" && (
-              <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">Cerrada</span>
+              <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">
+                Cerrada
+              </span>
             )}
           </div>
           <button onClick={onClose} className="p-1 rounded hover:bg-slate-100" aria-label="Cerrar">
@@ -269,46 +276,58 @@ export default function ClosePqrsModal({
           ) : (
             <div className="grid gap-5 md:grid-cols-2">
               {/* Col izquierda: seguimiento */}
-              <div className="grid gap-4">
-                <label className="grid gap-1 text-sm">
-                  <span className="text-slate-700">Nota</span>
-                  <textarea
-                    rows={4}
-                    value={nota}
-                    onChange={(e) => setNota(e.target.value)}
-                    placeholder="Añade una nota de seguimiento"
-                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30"
-                  />
-                </label>
-
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className={lockedUI ? "opacity-60 grayscale pointer-events-none" : ""}>
+                <div className="grid gap-4">
                   <label className="grid gap-1 text-sm">
-                    <span className="text-slate-700">Responsable</span>
-                    <input
-                      value={responsable}
-                      onChange={(e) => setResponsable(e.target.value)}
-                      placeholder="Área/Usuario"
-                      className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30"
+                    <span className="text-slate-700">Nota</span>
+                    <textarea
+                      rows={4}
+                      value={nota}
+                      onChange={(e) => setNota(e.target.value)}
+                      placeholder="Añade una nota de seguimiento"
+                      disabled={lockedUI}
+                      className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 disabled:bg-slate-50"
                     />
                   </label>
 
-                  <label className="grid gap-1 text-sm">
-                    <span className="text-slate-700">Estado</span>
-                    <select
-                      value={estado}
-                      onChange={(e) => setEstado(e.target.value as Estado)}
-                      className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30"
-                    >
-                      <option>Abierta</option>
-                      <option>En trámite</option>
-                      <option>Re Abierto</option>
-                      <option>Cerrada</option>
-                    </select>
-                  </label>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <label className="grid gap-1 text-sm">
+                      <span className="text-slate-700">Responsable</span>
+                      <input
+                        value={responsable}
+                        onChange={(e) => setResponsable(e.target.value)}
+                        placeholder="Área/Usuario"
+                        disabled={lockedUI}
+                        className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 disabled:bg-slate-50"
+                      />
+                    </label>
+
+                    <label className="grid gap-1 text-sm">
+                      <span className="text-slate-700">Estado</span>
+                      <select
+                        value={estado}
+                        onChange={(e) => setEstado(e.target.value as Estado)}
+                        disabled={lockedUI}
+                        className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--brand)]/30 disabled:bg-slate-50"
+                      >
+                        <option>Abierta</option>
+                        <option>En trámite</option>
+                        <option>Re Abierto</option>
+                        <option>Cerrada</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  {lockedUI && (
+                    <div className="text-xs text-slate-600">
+                      Esta PQRS está <b>cerrada</b>. El seguimiento está en modo lectura.
+                      Para modificar o agregar notas, usa <b>Reabrir</b>.
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Col derecha: historial */}
+              {/* Col derecha: historial (solo lectura, siempre) */}
               <div className="grid gap-3">
                 <div className="bg-white border rounded-md border-slate-200">
                   <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-200">
@@ -349,26 +368,31 @@ export default function ClosePqrsModal({
           <button
             onClick={onClose}
             className="inline-flex items-center px-3 py-2 text-sm border rounded-md border-slate-200 hover:bg-white"
+            type="button"
           >
             Cancelar
           </button>
 
           <div className="flex items-center gap-2">
+            {/* ✅ Guardar seguimiento: deshabilitado si está cerrada */}
             <button
               onClick={saveSeguimiento}
-              disabled={loading}
-              className="inline-flex items-center gap-2 px-3 py-2 text-sm border rounded-md border-slate-200 hover:bg-white disabled:opacity-60"
-              title="Guardar nota / cambios"
+              disabled={loading || lockedUI}
+              className="inline-flex items-center gap-2 px-3 py-2 text-sm border rounded-md border-slate-200 hover:bg-white disabled:opacity-60 disabled:cursor-not-allowed"
+              title={lockedUI ? "La PQRS está cerrada. Reabre para guardar seguimiento." : "Guardar nota / cambios"}
+              type="button"
             >
               <Pencil size={14} />
               Guardar seguimiento
             </button>
 
+            {/* ✅ Si está cerrada => solo Reabrir */}
             {data?.estado === "Cerrada" ? (
               <button
                 onClick={() => setAskReopen(true)}
                 disabled={loading}
-                className="inline-flex items-center gap-2 px-3 py-2 text-sm text-white rounded-md bg-amber-600 hover:opacity-90"
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm text-white rounded-md bg-amber-600 hover:opacity-90 disabled:opacity-60"
+                type="button"
               >
                 Reabrir PQR
               </button>
@@ -376,7 +400,8 @@ export default function ClosePqrsModal({
               <button
                 onClick={cerrarPQR}
                 disabled={loading}
-                className="inline-flex items-center gap-2 rounded-md bg-[var(--brand)] px-3 py-2 text-sm text-white hover:opacity-90"
+                className="inline-flex items-center gap-2 rounded-md bg-[var(--brand)] px-3 py-2 text-sm text-white hover:opacity-90 disabled:opacity-60"
+                type="button"
               >
                 <CheckCircle2 size={14} />
                 Cerrar PQR
@@ -393,7 +418,12 @@ export default function ClosePqrsModal({
           <div className="absolute left-1/2 top-1/2 w-[min(520px,94vw)] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-slate-200 bg-white shadow-xl">
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
               <h5 className="text-sm font-semibold">Motivo de reapertura</h5>
-              <button onClick={() => setAskReopen(false)} className="p-1 rounded hover:bg-slate-100" aria-label="Cerrar">
+              <button
+                onClick={() => setAskReopen(false)}
+                className="p-1 rounded hover:bg-slate-100"
+                aria-label="Cerrar"
+                type="button"
+              >
                 <XCircle size={16} />
               </button>
             </div>
@@ -407,12 +437,17 @@ export default function ClosePqrsModal({
               />
             </div>
             <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-slate-200">
-              <button onClick={() => setAskReopen(false)} className="px-3 py-2 text-sm border rounded-md border-slate-200 hover:bg-white">
+              <button
+                onClick={() => setAskReopen(false)}
+                className="px-3 py-2 text-sm border rounded-md border-slate-200 hover:bg-white"
+                type="button"
+              >
                 Cancelar
               </button>
               <button
                 onClick={reabrirPQR}
                 className="px-3 py-2 text-sm text-white rounded-md bg-amber-600 hover:opacity-90"
+                type="button"
               >
                 Reabrir
               </button>

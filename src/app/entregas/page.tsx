@@ -16,6 +16,7 @@ import {
   FileDown,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
 import {
   getEntregas,
@@ -27,6 +28,8 @@ import {
   type TipoDoc,
 } from "@/lib/entregas.api";
 
+import DocumentDropzone from "@/components/files/DocumentDropzone";
+
 /* ============ Helpers UI ============ */
 function Button({
   children,
@@ -36,20 +39,28 @@ function Button({
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "solid" | "outline" | "ghost";
 }) {
-  const base =
-    "inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm transition";
+  const reduceMotion = useReducedMotion();
+  const base = "inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm transition";
   const styles =
     variant === "solid"
       ? "bg-[var(--brand)] text-white hover:opacity-90"
       : variant === "outline"
       ? "border border-[var(--subtle)] hover:bg-white"
       : "hover:bg-white";
+
   return (
-    <button className={`${base} ${styles} ${className}`} {...props}>
+    <motion.button
+      whileHover={reduceMotion ? undefined : { scale: 1.01 }}
+      whileTap={reduceMotion ? undefined : { scale: 0.98 }}
+      transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 28 }}
+      className={`${base} ${styles} ${className}`}
+      {...props}
+    >
       {children}
-    </button>
+    </motion.button>
   );
 }
+
 function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
@@ -93,13 +104,12 @@ function Badge({
     emerald: "bg-emerald-100 text-emerald-700 border-emerald-200",
   } as const;
   return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${map[tone]}`}
-    >
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${map[tone]}`}>
       {children}
     </span>
   );
 }
+
 function Section({
   title,
   icon,
@@ -124,6 +134,8 @@ function Section({
     </div>
   );
 }
+
+/* ============ Modal animado ============ */
 function Modal({
   open,
   onClose,
@@ -139,40 +151,55 @@ function Modal({
   actions?: React.ReactNode;
   children: React.ReactNode;
 }) {
-  if (!open) return null;
+  const reduceMotion = useReducedMotion();
 
   return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="absolute inset-0 flex items-center justify-center p-4">
-        <div
-          className={[
-            wide ? "w-[min(1100px,96vw)]" : "w-[min(720px,92vw)]",
-            "max-h-[92vh] overflow-hidden",
-            "rounded-xl border border-[var(--subtle)] bg-[var(--panel)] shadow-2xl",
-            "flex flex-col",
-          ].join(" ")}
-        >
-          <div className="flex items-center justify-between border-b border-[var(--subtle)] px-5 py-4">
-            <h4 className="text-sm font-semibold">{title}</h4>
-            <button
-              onClick={onClose}
-              className="inline-flex items-center justify-center rounded-md h-9 w-9 hover:bg-slate-100"
-              aria-label="Cerrar"
-              type="button"
+    <AnimatePresence initial={false}>
+      {open && (
+        <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+          <motion.div
+            className="absolute inset-0 bg-black/40"
+            onClick={onClose}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={reduceMotion ? { duration: 0 } : { duration: 0.15 }}
+          />
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            <motion.div
+              initial={reduceMotion ? false : { opacity: 0, y: 12, scale: 0.98 }}
+              animate={reduceMotion ? {} : { opacity: 1, y: 0, scale: 1 }}
+              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.98 }}
+              transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 260, damping: 26 }}
+              className={[
+                wide ? "w-[min(1100px,96vw)]" : "w-[min(720px,92vw)]",
+                "max-h-[92vh] overflow-hidden",
+                "rounded-xl border border-[var(--subtle)] bg-[var(--panel)] shadow-2xl",
+                "flex flex-col",
+              ].join(" ")}
             >
-              ✕
-            </button>
-          </div>
+              <div className="flex items-center justify-between border-b border-[var(--subtle)] px-5 py-4">
+                <h4 className="text-sm font-semibold">{title}</h4>
+                <button
+                  onClick={onClose}
+                  className="inline-flex items-center justify-center rounded-md h-9 w-9 hover:bg-slate-100"
+                  aria-label="Cerrar"
+                  type="button"
+                >
+                  ✕
+                </button>
+              </div>
 
-          <div className="flex-1 min-h-0 p-5 overflow-y-auto">{children}</div>
+              <div className="flex-1 min-h-0 p-5 overflow-y-auto">{children}</div>
 
-          <div className="flex items-center justify-end gap-2 border-t border-[var(--subtle)] px-5 py-4">
-            {actions}
+              <div className="flex items-center justify-end gap-2 border-t border-[var(--subtle)] px-5 py-4">
+                {actions}
+              </div>
+            </motion.div>
           </div>
         </div>
-      </div>
-    </div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -212,7 +239,6 @@ function loadUserFromStorage(): SessionUser | null {
 }
 
 async function loadSessionUser(): Promise<SessionUser | null> {
-  // 1) Si tienes endpoint de sesión:
   try {
     const res = await fetch(`/api/auth/me?ts=${Date.now()}`, {
       cache: "no-store",
@@ -224,11 +250,7 @@ async function loadSessionUser(): Promise<SessionUser | null> {
       const u = pickUserFromAny(data);
       if (u) return u;
     }
-  } catch {
-    // ignore
-  }
-
-  // 2) fallback localStorage
+  } catch {}
   return loadUserFromStorage();
 }
 
@@ -254,7 +276,7 @@ type KitApi = {
 
 type EntregaDraft = Entrega & {
   responsableUserId?: number | null;
-  kitId?: number | null; // ✅ nuevo
+  kitId?: number | null;
 };
 
 function emptyDraft(): EntregaDraft {
@@ -302,7 +324,9 @@ const renderComprobanteHtml = (r: Entrega) => {
     )
     .join("");
 
-  const beneficiarioDoc = `${r.beneficiario?.tipo_doc ? esc(r.beneficiario.tipo_doc) + " " : ""}${esc(r.beneficiario?.doc)}`;
+  const beneficiarioDoc = `${r.beneficiario?.tipo_doc ? esc(r.beneficiario.tipo_doc) + " " : ""}${esc(
+    r.beneficiario?.doc
+  )}`;
 
   return `<!doctype html>
 <html lang="es">
@@ -324,7 +348,6 @@ const renderComprobanteHtml = (r: Entrega) => {
     .muted{ color:var(--m); font-size:12px; margin-top:4px; }
     .box{ border:1px solid var(--b); border-radius:12px; padding:14px; margin-top:14px; }
     .grid{ display:grid; grid-template-columns: repeat(12, 1fr); gap:10px; }
-    .col6{ grid-column: span 6; }
     .col4{ grid-column: span 4; }
     .col8{ grid-column: span 8; }
     .col12{ grid-column: span 12; }
@@ -425,12 +448,15 @@ function toEntregaItemsFromKit(kit: KitApi): Item[] {
     nombre: String(it.nombre ?? "").trim(),
     unidad: String(it.unidad ?? "UND").trim() || "UND",
     cantidad: Number(it.cantidad ?? 1),
-  }));
+  })) as any;
 }
+
+type AdjMeta = { name: string; size: number };
 
 /* ============ Página ============ */
 export default function EntregasPage() {
   const title = "Entregas de insumos/kits";
+  const reduceMotion = useReducedMotion();
 
   const [rows, setRows] = useState<Entrega[]>([]);
   const [loading, setLoading] = useState(false);
@@ -445,7 +471,6 @@ export default function EntregasPage() {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<EntregaDraft | null>(null);
 
-  // ✅ Kits (desde BD)
   const [kits, setKits] = useState<KitApi[]>([]);
   const [kitsLoading, setKitsLoading] = useState(false);
 
@@ -522,15 +547,12 @@ export default function EntregasPage() {
 
   const nueva = () => {
     const d = emptyDraft();
-
-    // ✅ set responsable desde sesión (no editable)
     if (me) {
       d.responsable = me.nombre;
       d.responsableUserId = me.id;
     } else {
       toast.error("No pude leer el usuario de sesión. Re-inicia sesión.");
     }
-
     setDraft(d);
     setOpen(true);
   };
@@ -546,12 +568,10 @@ export default function EntregasPage() {
   const guardar = async () => {
     if (!draft) return;
 
-    // Validaciones mínimas
     if (!draft.beneficiario?.doc?.trim()) return toast.error("Documento del beneficiario es obligatorio");
     if (!draft.beneficiario?.nombre?.trim()) return toast.error("Nombre del beneficiario es obligatorio");
     if (!draft.items?.length) return toast.error("Debes agregar al menos 1 ítem");
 
-    // ✅ si es creación, exigimos sesión para guardar responsableUserId
     const isNew = !(draft.id && draft.id > 0);
     if (isNew && (!me || !me.id)) {
       return toast.error("No hay sesión activa para asignar responsable. Inicia sesión de nuevo.");
@@ -561,11 +581,8 @@ export default function EntregasPage() {
       comprobante: draft.comprobante || undefined,
       fecha: draft.fecha,
       estado: draft.estado,
-
-      // ✅ snapshot + relación
       kitId: draft.kitId ?? null,
       kit: draft.kit || undefined,
-
       beneficiario: draft.beneficiario,
       direccion: draft.direccion || undefined,
       items: (draft.items || []).map((it: any) => ({
@@ -577,7 +594,6 @@ export default function EntregasPage() {
       adjuntos: draft.adjuntos ?? [],
     };
 
-    // ✅ solo en CREATE enviamos responsable + responsableUserId
     if (isNew && me) {
       payload.responsable = me.nombre;
       payload.responsableUserId = me.id;
@@ -595,8 +611,7 @@ export default function EntregasPage() {
         (t) => (
           <div className="flex items-center gap-3">
             <div className="text-sm">
-              Guardado ✅{" "}
-              <span className="text-slate-500">¿Deseas imprimir el comprobante?</span>
+              Guardado ✅ <span className="text-slate-500">¿Deseas imprimir el comprobante?</span>
             </div>
             <button
               onClick={() => {
@@ -624,23 +639,14 @@ export default function EntregasPage() {
   };
 
   const imprimir = (row: Entrega) => {
-    if (!row.items || row.items.length === 0) {
-      toast.error("No puedes imprimir: la entrega no tiene ítems.");
-      return;
-    }
-    if (row.estado !== "Entregado") {
-      toast.error('Solo puedes imprimir cuando el estado sea "Entregado".');
-      return;
-    }
+    if (!row.items || row.items.length === 0) return toast.error("No puedes imprimir: la entrega no tiene ítems.");
+    if (row.estado !== "Entregado") return toast.error('Solo puedes imprimir cuando el estado sea "Entregado".');
 
     try {
       const html = renderComprobanteHtml(row);
 
       const w = window.open("", "_blank");
-      if (!w) {
-        toast.error("El navegador bloqueó la ventana. Permite pop-ups.");
-        return;
-      }
+      if (!w) return toast.error("El navegador bloqueó la ventana. Permite pop-ups.");
 
       const blob = new Blob([html], { type: "text/html;charset=utf-8" });
       const url = URL.createObjectURL(blob);
@@ -707,7 +713,13 @@ export default function EntregasPage() {
 
   return (
     <DashboardShell title={title}>
-      <div className="grid gap-6">
+      <motion.div
+        layout
+        initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+        animate={reduceMotion ? {} : { opacity: 1, y: 0 }}
+        transition={reduceMotion ? { duration: 0 } : { duration: 0.18 }}
+        className="grid gap-6"
+      >
         <Section
           title="Registro de entregas"
           icon={<Package size={18} />}
@@ -740,22 +752,24 @@ export default function EntregasPage() {
         >
           {/* KPIs */}
           <div className="grid grid-cols-2 gap-3 mb-4 md:grid-cols-4">
-            <div className="rounded border border-[var(--subtle)] bg-white p-3 text-sm">
-              <div className="text-slate-500">Total</div>
-              <div className="text-xl font-semibold">{totals.t}</div>
-            </div>
-            <div className="rounded border border-[var(--subtle)] bg-white p-3 text-sm">
-              <div className="text-slate-500">Pendientes</div>
-              <div className="text-xl font-semibold">{totals.p}</div>
-            </div>
-            <div className="rounded border border-[var(--subtle)] bg-white p-3 text-sm">
-              <div className="text-slate-500">Parciales</div>
-              <div className="text-xl font-semibold">{totals.parc}</div>
-            </div>
-            <div className="rounded border border-[var(--subtle)] bg-white p-3 text-sm">
-              <div className="text-slate-500">Entregadas</div>
-              <div className="text-xl font-semibold">{totals.e}</div>
-            </div>
+            {[
+              { label: "Total", value: totals.t },
+              { label: "Pendientes", value: totals.p },
+              { label: "Parciales", value: totals.parc },
+              { label: "Entregadas", value: totals.e },
+            ].map((k) => (
+              <motion.div
+                key={k.label}
+                layout
+                initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+                animate={reduceMotion ? {} : { opacity: 1, y: 0 }}
+                transition={reduceMotion ? { duration: 0 } : { duration: 0.14 }}
+                className="rounded border border-[var(--subtle)] bg-white p-3 text-sm"
+              >
+                <div className="text-slate-500">{k.label}</div>
+                <div className="text-xl font-semibold">{k.value}</div>
+              </motion.div>
+            ))}
           </div>
 
           {/* Tabla */}
@@ -772,6 +786,7 @@ export default function EntregasPage() {
                   <th className="w-64 px-3 py-2 text-left">Acciones</th>
                 </tr>
               </thead>
+
               <tbody>
                 {loading && (
                   <tr>
@@ -781,51 +796,61 @@ export default function EntregasPage() {
                   </tr>
                 )}
 
-                {!loading &&
-                  filtered.map((r) => (
-                    <tr key={r.id} className="border-b border-[var(--subtle)]/70">
-                      <td className="py-2 pl-4 pr-3 font-medium">{r.comprobante}</td>
-                      <td className="px-3 py-2">{r.fecha}</td>
-                      <td className="px-3 py-2">
-                        {r.beneficiario.nombre}{" "}
-                        <span className="text-slate-500">({r.beneficiario.doc || "s/d"})</span>
-                      </td>
-                      <td className="px-3 py-2">
-                        {r.estado === "Entregado" ? (
-                          <Badge tone="emerald">
-                            <CheckCircle2 className="mr-1" size={12} /> Entregado
-                          </Badge>
-                        ) : r.estado === "Parcial" ? (
-                          <Badge tone="amber">Parcial</Badge>
-                        ) : (
-                          <Badge tone="slate">Pendiente</Badge>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">{r.responsable || "—"}</td>
-                      <td className="px-3 py-2">{r.items.length}</td>
-                      <td className="px-3 py-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Button variant="outline" onClick={() => editar(r)}>
-                            <Pencil size={14} /> Detalle
-                          </Button>
-                          <Select
-                            value={r.estado}
-                            onChange={(e) => cambiarEstado(r, e.target.value as Estado)}
-                            className="w-32"
-                          >
-                            {(["Pendiente", "Parcial", "Entregado"] as Estado[]).map((s) => (
-                              <option key={s} value={s}>
-                                {s}
-                              </option>
-                            ))}
-                          </Select>
-                          <Button variant="ghost" onClick={() => imprimir(r)}>
-                            <Printer size={14} /> Imprimir
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                {!loading && (
+                  <AnimatePresence initial={false}>
+                    {filtered.map((r) => (
+                      <motion.tr
+                        key={r.id}
+                        layout
+                        initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+                        animate={reduceMotion ? {} : { opacity: 1, y: 0 }}
+                        exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+                        transition={reduceMotion ? { duration: 0 } : { duration: 0.14 }}
+                        className="border-b border-[var(--subtle)]/70"
+                      >
+                        <td className="py-2 pl-4 pr-3 font-medium">{r.comprobante}</td>
+                        <td className="px-3 py-2">{r.fecha}</td>
+                        <td className="px-3 py-2">
+                          {r.beneficiario.nombre} <span className="text-slate-500">({r.beneficiario.doc || "s/d"})</span>
+                        </td>
+                        <td className="px-3 py-2">
+                          {r.estado === "Entregado" ? (
+                            <Badge tone="emerald">
+                              <CheckCircle2 className="mr-1" size={12} /> Entregado
+                            </Badge>
+                          ) : r.estado === "Parcial" ? (
+                            <Badge tone="amber">Parcial</Badge>
+                          ) : (
+                            <Badge tone="slate">Pendiente</Badge>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">{r.responsable || "—"}</td>
+                        <td className="px-3 py-2">{r.items.length}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button variant="outline" onClick={() => editar(r)}>
+                              <Pencil size={14} /> Detalle
+                            </Button>
+                            <Select
+                              value={r.estado}
+                              onChange={(e) => cambiarEstado(r, e.target.value as Estado)}
+                              className="w-32"
+                            >
+                              {(["Pendiente", "Parcial", "Entregado"] as Estado[]).map((s) => (
+                                <option key={s} value={s}>
+                                  {s}
+                                </option>
+                              ))}
+                            </Select>
+                            <Button variant="ghost" onClick={() => imprimir(r)}>
+                              <Printer size={14} /> Imprimir
+                            </Button>
+                          </div>
+                        </td>
+                      </motion.tr>
+                    ))}
+                  </AnimatePresence>
+                )}
 
                 {!loading && filtered.length === 0 && (
                   <tr>
@@ -838,7 +863,7 @@ export default function EntregasPage() {
             </table>
           </div>
         </Section>
-      </div>
+      </motion.div>
 
       <EntregaModal
         open={open}
@@ -872,7 +897,7 @@ function EntregaModal({
   open: boolean;
   setOpen: (v: boolean) => void;
   draft: EntregaDraft | null;
-  setDraft: (d: EntregaDraft | null) => void;
+  setDraft: React.Dispatch<React.SetStateAction<EntregaDraft | null>>;
   onSave: () => void;
   onPrint: (row: Entrega) => void;
   sessionUser: SessionUser | null;
@@ -883,19 +908,59 @@ function EntregaModal({
 }) {
   const [benefLoading, setBenefLoading] = useState(false);
 
-  // ✅ HOOKS SIEMPRE ARRIBA (antes de cualquier return condicional)
+  // Adjuntos: guardados (metadata) + nuevos (File[])
+  const [adjSaved, setAdjSaved] = useState<AdjMeta[]>([]);
+  const [adjNew, setAdjNew] = useState<File[]>([]);
+
+  const normalizeAdjSaved = (arr: any): AdjMeta[] => {
+    const a = Array.isArray(arr) ? arr : [];
+    return a
+      .map((x: any) => ({
+        name: String(x?.name ?? x?.nombre ?? "").trim(),
+        size: Number(x?.size ?? 0),
+      }))
+      .filter((x: AdjMeta) => x.name);
+  };
+
+  const dedupeMeta = (arr: AdjMeta[]) => {
+    const seen = new Set<string>();
+    return (arr || []).filter((x) => {
+      const k = `${x.name}__${x.size}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  };
+
+  // reset cuando abres/cambias entrega
+  useEffect(() => {
+    if (!open || !draft) return;
+    setAdjSaved(normalizeAdjSaved(draft.adjuntos));
+    setAdjNew([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, draft?.id]);
+
+  // sincroniza draft.adjuntos (metadata) = adjSaved + adjNew
+  useEffect(() => {
+    if (!draft) return;
+    const merged: AdjMeta[] = dedupeMeta([
+      ...adjSaved,
+      ...adjNew.map((f) => ({ name: f.name, size: f.size })),
+    ]);
+
+    setDraft((prev) => (prev ? { ...prev, adjuntos: merged as any } : prev));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adjSaved, adjNew]);
+
+  // Autovincular kitId por nombre si abre una entrega vieja
   useEffect(() => {
     if (!draft) return;
     if (draft.kitId) return;
     if (!draft.kit?.trim()) return;
     if (!kits.length) return;
 
-    const hit = kits.find(
-      (k) => k.nombre.trim().toLowerCase() === draft.kit!.trim().toLowerCase()
-    );
-
+    const hit = kits.find((k) => k.nombre.trim().toLowerCase() === draft.kit!.trim().toLowerCase());
     if (hit) {
-      // ✅ evita usar "draft" viejo: actualiza con función
       setDraft((prev) => {
         if (!prev) return prev;
         if (prev.kitId) return prev;
@@ -905,31 +970,26 @@ function EntregaModal({
     }
   }, [draft, kits, setDraft]);
 
-  // ✅ ahora sí puedes retornar
   if (!draft) return null;
 
   const setItem = (i: number, patch: Partial<Item>) => {
-    const arr = [...draft.items];
+    const arr = [...(draft.items as any[])];
     arr[i] = { ...arr[i], ...patch };
-    setDraft({ ...draft, items: arr });
+    setDraft({ ...draft, items: arr as any });
   };
 
   const addItem = () =>
     setDraft({
       ...draft,
-      items: [
-        ...draft.items,
-        ({ nombre: "", unidad: "UND", cantidad: 1 } as any), // ❌ sin id
-      ],
+      items: [...(draft.items as any[]), { nombre: "", unidad: "UND", cantidad: 1 }],
     });
 
   const rmItem = (i: number) =>
     setDraft({
       ...draft,
-      items: draft.items.filter((_, idx) => idx !== i),
+      items: (draft.items as any[]).filter((_: any, idx: number) => idx !== i),
     });
 
-  // ✅ Selección desde BD (NO quemado)
   const onSelectKit = (kitIdStr: string) => {
     if (!kitIdStr) {
       setDraft({ ...draft, kitId: null, kit: "" });
@@ -939,27 +999,17 @@ function EntregaModal({
     const kit = kits.find((k) => k.id === kitId);
     if (!kit) return;
 
-    // ✅ snapshot: kit nombre + items copiados
-    const items = toEntregaItemsFromKit(kit);
     setDraft({
       ...draft,
       kitId: kit.id,
       kit: kit.nombre,
-      items,
+      items: toEntregaItemsFromKit(kit) as any,
     });
   };
 
-  const onAdj = (files: FileList | null) => {
-    if (!files) return;
-    const arr = Array.from(files).map((f) => ({ name: f.name, size: f.size }));
-    setDraft({ ...draft, adjuntos: [...draft.adjuntos, ...arr] });
+  const removeSaved = (name: string, size: number) => {
+    setAdjSaved((prev) => prev.filter((a) => !(a.name === name && a.size === size)));
   };
-
-  const rmAdj = (name: string) =>
-    setDraft({
-      ...draft,
-      adjuntos: draft.adjuntos.filter((a) => a.name !== name),
-    });
 
   const buscarBeneficiario = async () => {
     const tipo = (draft.beneficiario?.tipo_doc ?? "CC") as TipoDoc;
@@ -968,13 +1018,10 @@ function EntregaModal({
 
     try {
       setBenefLoading(true);
-
-      const res = await fetch(
-        `/api/beneficiarios/buscar?tipo=${encodeURIComponent(
-          tipo
-        )}&doc=${encodeURIComponent(doc)}`,
-        { cache: "no-store", credentials: "include" }
-      );
+      const res = await fetch(`/api/beneficiarios/buscar?tipo=${encodeURIComponent(tipo)}&doc=${encodeURIComponent(doc)}`, {
+        cache: "no-store",
+        credentials: "include",
+      });
 
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
@@ -982,16 +1029,9 @@ function EntregaModal({
       }
 
       const data = await res.json();
+      if (!data) return toast("No existe ese beneficiario. Puedes escribir el nombre manualmente.");
 
-      if (!data) {
-        toast("No existe ese beneficiario. Puedes escribir el nombre manualmente.");
-        return;
-      }
-
-      const nombre = [data.nombres, data.apellidos]
-        .filter(Boolean)
-        .join(" ")
-        .trim();
+      const nombre = [data.nombres, data.apellidos].filter(Boolean).join(" ").trim();
 
       setDraft({
         ...draft,
@@ -1001,10 +1041,7 @@ function EntregaModal({
           doc: data.num_doc ?? doc,
           nombre: nombre || draft.beneficiario.nombre,
         },
-        direccion:
-          (draft.direccion?.trim()
-            ? draft.direccion
-            : (data.direccion ?? "")) || "",
+        direccion: (draft.direccion?.trim() ? draft.direccion : data.direccion ?? "") || "",
       });
 
       toast.success("Beneficiario encontrado ✅");
@@ -1015,7 +1052,6 @@ function EntregaModal({
     }
   };
 
-  // ✅ responsable NO se edita, pero debe existir al crear
   const isNew = !(draft.id && draft.id > 0);
   const hasResponsable = !isNew || (!!sessionUser?.id && !!sessionUser?.nombre);
 
@@ -1023,7 +1059,7 @@ function EntregaModal({
     hasResponsable &&
     !!draft.beneficiario?.nombre?.trim() &&
     !!draft.beneficiario?.doc?.trim() &&
-    (draft.items?.length ?? 0) > 0;
+    ((draft.items as any[])?.length ?? 0) > 0;
 
   return (
     <Modal
@@ -1041,11 +1077,11 @@ function EntregaModal({
             variant="outline"
             type="button"
             onClick={() => draft && onPrint(draft)}
-            disabled={!draft || draft.estado !== "Entregado" || !draft.items?.length}
+            disabled={!draft || draft.estado !== "Entregado" || !(draft.items as any[])?.length}
             title={
-              !draft?.items?.length
+              !(draft.items as any[])?.length
                 ? "Agrega ítems para imprimir"
-                : draft?.estado !== "Entregado"
+                : draft.estado !== "Entregado"
                 ? 'Solo se imprime cuando esté en "ENTREGADO"'
                 : "Imprimir comprobante"
             }
@@ -1059,42 +1095,31 @@ function EntregaModal({
         </>
       }
     >
-      {/* ✅ TU MISMO JSX (no lo toqué) */}
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Datos principales */}
         <div className="grid gap-4 lg:col-span-2">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <label className="grid gap-1 text-sm">
               <span className="text-slate-700">Fecha</span>
-              <Input
-                type="date"
-                value={draft.fecha}
-                onChange={(e) => setDraft({ ...draft, fecha: e.target.value })}
-              />
+              <Input type="date" value={draft.fecha} onChange={(e) => setDraft({ ...draft, fecha: e.target.value })} />
             </label>
 
-            {/* ✅ Responsable fijo: gris, no editable */}
             <label className="grid gap-1 text-sm">
               <span className="text-slate-700">Responsable</span>
               <Input
-                value={isNew ? (sessionUser?.nombre ?? "—") : (draft.responsable ?? "—")}
+                value={isNew ? sessionUser?.nombre ?? "—" : draft.responsable ?? "—"}
                 readOnly
                 disabled
                 className="cursor-not-allowed bg-slate-100 text-slate-500"
               />
               {isNew && !sessionUser?.id && (
-                <div className="text-xs text-rose-600">
-                  No hay sesión. Inicia sesión para crear entregas.
-                </div>
+                <div className="text-xs text-rose-600">No hay sesión. Inicia sesión para crear entregas.</div>
               )}
             </label>
 
             <label className="grid gap-1 text-sm">
               <span className="text-slate-700">Estado</span>
-              <Select
-                value={draft.estado}
-                onChange={(e) => setDraft({ ...draft, estado: e.target.value as Estado })}
-              >
+              <Select value={draft.estado} onChange={(e) => setDraft({ ...draft, estado: e.target.value as Estado })}>
                 {(["Pendiente", "Parcial", "Entregado"] as Estado[]).map((s) => (
                   <option key={s} value={s}>
                     {s}
@@ -1103,25 +1128,19 @@ function EntregaModal({
               </Select>
             </label>
 
-            {/* Beneficiario: tipo + doc + buscar */}
             <label className="grid gap-1 text-sm">
               <span className="text-slate-700">Tipo doc</span>
               <Select
                 value={(draft.beneficiario?.tipo_doc ?? "CC") as TipoDoc}
                 onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    beneficiario: { ...draft.beneficiario, tipo_doc: e.target.value as TipoDoc },
-                  })
+                  setDraft({ ...draft, beneficiario: { ...draft.beneficiario, tipo_doc: e.target.value as TipoDoc } })
                 }
               >
-                {(["CC", "TI", "CE", "RC", "PA", "PEP", "PPT", "NIT", "OTRO"] as TipoDoc[]).map(
-                  (t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  )
-                )}
+                {(["CC", "TI", "CE", "RC", "PA", "PEP", "PPT", "NIT", "OTRO"] as TipoDoc[]).map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
               </Select>
             </label>
 
@@ -1129,12 +1148,7 @@ function EntregaModal({
               <span className="text-slate-700">Documento</span>
               <Input
                 value={draft.beneficiario.doc}
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    beneficiario: { ...draft.beneficiario, doc: e.target.value },
-                  })
-                }
+                onChange={(e) => setDraft({ ...draft, beneficiario: { ...draft.beneficiario, doc: e.target.value } })}
                 placeholder="Número"
               />
             </label>
@@ -1150,33 +1164,19 @@ function EntregaModal({
               <span className="text-slate-700">Beneficiario (Nombre)</span>
               <Input
                 value={draft.beneficiario.nombre}
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    beneficiario: { ...draft.beneficiario, nombre: e.target.value },
-                  })
-                }
+                onChange={(e) => setDraft({ ...draft, beneficiario: { ...draft.beneficiario, nombre: e.target.value } })}
                 placeholder="Nombre completo"
               />
             </label>
 
             <label className="grid gap-1 text-sm md:col-span-2">
               <span className="text-slate-700">Dirección (opcional)</span>
-              <Input
-                value={draft.direccion}
-                onChange={(e) => setDraft({ ...draft, direccion: e.target.value })}
-                placeholder="Dirección de entrega"
-              />
+              <Input value={draft.direccion} onChange={(e) => setDraft({ ...draft, direccion: e.target.value })} placeholder="Dirección de entrega" />
             </label>
 
-            {/* ✅ Kits desde BD */}
             <label className="grid gap-1 text-sm">
               <span className="text-slate-700">Kit (desde BD)</span>
-              <Select
-                value={draft.kitId ? String(draft.kitId) : ""}
-                onChange={(e) => onSelectKit(e.target.value)}
-                disabled={kitsLoading}
-              >
+              <Select value={draft.kitId ? String(draft.kitId) : ""} onChange={(e) => onSelectKit(e.target.value)} disabled={kitsLoading}>
                 <option value="">{kitsLoading ? "Cargando kits..." : "— Seleccionar —"}</option>
                 {kits.map((k) => (
                   <option key={k.id} value={String(k.id)}>
@@ -1197,7 +1197,7 @@ function EntregaModal({
                     if (!draft.kitId) return toast.error("Selecciona un kit primero");
                     const kit = kits.find((k) => k.id === draft.kitId);
                     if (!kit) return toast.error("Kit no encontrado");
-                    setDraft({ ...draft, kit: kit.nombre, items: toEntregaItemsFromKit(kit) });
+                    setDraft({ ...draft, kit: kit.nombre, items: toEntregaItemsFromKit(kit) as any });
                     toast.success("Items cargados desde el kit ✅");
                   }}
                   disabled={!draft.kitId}
@@ -1237,16 +1237,16 @@ function EntregaModal({
                   </tr>
                 </thead>
                 <tbody>
-                  {draft.items.map((it, i) => (
+                  {(draft.items as any[]).map((it, i) => (
                     <tr key={i} className="border-b border-[var(--subtle)]/60">
                       <td className="px-2 py-2">
-                        <Input value={it.nombre} onChange={(e) => setItem(i, { nombre: e.target.value })} placeholder="Nombre del producto" />
+                        <Input value={it.nombre} onChange={(e) => setItem(i, { nombre: e.target.value } as any)} placeholder="Nombre del producto" />
                       </td>
                       <td className="px-2 py-2">
-                        <Input value={it.unidad} onChange={(e) => setItem(i, { unidad: e.target.value })} placeholder="UND/KG/L..." />
+                        <Input value={it.unidad} onChange={(e) => setItem(i, { unidad: e.target.value } as any)} placeholder="UND/KG/L..." />
                       </td>
                       <td className="px-2 py-2">
-                        <Input type="number" value={it.cantidad} onChange={(e) => setItem(i, { cantidad: Number(e.target.value) })} />
+                        <Input type="number" value={it.cantidad} onChange={(e) => setItem(i, { cantidad: Number(e.target.value) } as any)} />
                       </td>
                       <td className="px-2 py-2">
                         <Button variant="ghost" type="button" onClick={() => rmItem(i)} title="Quitar">
@@ -1255,7 +1255,8 @@ function EntregaModal({
                       </td>
                     </tr>
                   ))}
-                  {draft.items.length === 0 && (
+
+                  {(draft.items as any[]).length === 0 && (
                     <tr>
                       <td colSpan={4} className="py-4 text-center text-slate-500">
                         Sin ítems. Selecciona un kit o usa “Agregar”.
@@ -1282,11 +1283,17 @@ function EntregaModal({
         <div className="grid gap-4">
           <div className="rounded border border-[var(--subtle)] bg-white p-3">
             <div className="flex items-center gap-2 mb-2 text-sm font-semibold">
-              <Upload size={16} className="text-[var(--brand)]" /> Adjuntos (PDF/otros)
+              <Upload size={16} className="text-[var(--brand)]" /> Adjuntos (Dropzone)
             </div>
-            <input type="file" multiple onChange={(e) => onAdj(e.target.files)} />
-            {draft.adjuntos.length > 0 && (
-              <div className="mt-3 overflow-x-auto">
+
+            <DocumentDropzone value={adjNew} onChange={setAdjNew} maxFiles={10} maxSizeMB={10} />
+
+            <div className="mt-2 text-xs text-slate-500">
+              En esta versión se guarda la lista/metadata. Si quieres descarga real, luego lo conectamos a storage.
+            </div>
+
+            {adjSaved.length > 0 && (
+              <div className="mt-3 overflow-x-auto rounded-md border border-[var(--subtle)] bg-white">
                 <table className="min-w-full text-sm">
                   <thead className="text-slate-500 border-b border-[var(--subtle)]">
                     <tr>
@@ -1296,12 +1303,12 @@ function EntregaModal({
                     </tr>
                   </thead>
                   <tbody>
-                    {draft.adjuntos.map((a) => (
-                      <tr key={a.name} className="border-b border-[var(--subtle)]/60">
+                    {adjSaved.map((a, idx) => (
+                      <tr key={`${a.name}-${a.size}-${idx}`} className="border-b border-[var(--subtle)]/60 last:border-b-0">
                         <td className="px-2 py-2">{a.name}</td>
                         <td className="px-2 py-2">{(a.size / 1024).toFixed(1)} KB</td>
                         <td className="px-2 py-2">
-                          <Button variant="ghost" type="button" onClick={() => rmAdj(a.name)}>
+                          <Button variant="ghost" type="button" onClick={() => removeSaved(a.name, a.size)}>
                             <Trash2 size={14} /> Quitar
                           </Button>
                         </td>
@@ -1311,18 +1318,15 @@ function EntregaModal({
                 </table>
               </div>
             )}
-            <div className="mt-2 text-xs text-slate-500">
-              Ej.: Acta firmada, consentimiento, soporte de entrega, etc.
-            </div>
+
+            <div className="mt-2 text-xs text-slate-500">Ej.: Acta firmada, consentimiento, soporte de entrega, etc.</div>
           </div>
 
           <div className="rounded border border-[var(--subtle)] bg-white p-3">
             <div className="flex items-center gap-2 mb-1 text-sm font-semibold">
               <Printer size={16} className="text-[var(--brand)]" /> Comprobante
             </div>
-            <p className="text-xs text-slate-600">
-              Podrás imprimir el comprobante desde la tabla (acción “Imprimir”).
-            </p>
+            <p className="text-xs text-slate-600">Podrás imprimir el comprobante desde la tabla (acción “Imprimir”).</p>
           </div>
         </div>
       </div>

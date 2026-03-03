@@ -13,8 +13,11 @@ import {
   Calendar,
   X,
   BarChart3,
+  Search,
+  Upload,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
 import {
   getActividades,
@@ -30,6 +33,7 @@ import {
 } from "@/lib/costos.api";
 
 import ConfirmModal from "@/components/ui/ConfirmModal";
+import DocumentDropzone from "@/components/files/DocumentDropzone";
 
 /* ============ Helpers UI ============ */
 function Button({
@@ -38,21 +42,32 @@ function Button({
   className = "",
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "solid" | "outline" | "ghost";
+  variant?: "solid" | "outline" | "ghost" | "danger";
 }) {
+  const reduceMotion = useReducedMotion();
   const base = "inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm transition";
   const styles =
     variant === "solid"
       ? "bg-[var(--brand)] text-white hover:opacity-90"
       : variant === "outline"
       ? "border border-[var(--subtle)] hover:bg-white"
+      : variant === "danger"
+      ? "border border-rose-200 text-rose-700 hover:bg-rose-50"
       : "hover:bg-white";
+
   return (
-    <button className={`${base} ${styles} ${className}`} {...props}>
+    <motion.button
+      whileHover={reduceMotion ? undefined : { scale: 1.01 }}
+      whileTap={reduceMotion ? undefined : { scale: 0.98 }}
+      transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 28 }}
+      className={`${base} ${styles} ${className}`}
+      {...props}
+    >
       {children}
-    </button>
+    </motion.button>
   );
 }
+
 function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
@@ -83,6 +98,7 @@ function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
     />
   );
 }
+
 function Section({
   title,
   icon,
@@ -94,8 +110,15 @@ function Section({
   actions?: ReactNode;
   children: ReactNode;
 }) {
+  const reduceMotion = useReducedMotion();
   return (
-    <div className="rounded-md border border-[var(--subtle)] bg-[var(--panel)]">
+    <motion.div
+      layout
+      initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+      animate={reduceMotion ? {} : { opacity: 1, y: 0 }}
+      transition={reduceMotion ? { duration: 0 } : { duration: 0.16 }}
+      className="rounded-md border border-[var(--subtle)] bg-[var(--panel)]"
+    >
       <div className="flex items-center justify-between border-b border-[var(--subtle)] px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="text-[var(--brand)]">{icon}</span>
@@ -104,7 +127,7 @@ function Section({
         <div className="flex items-center gap-2">{actions}</div>
       </div>
       <div className="p-4">{children}</div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -123,34 +146,48 @@ function Modal({
   wide?: boolean;
   children: React.ReactNode;
 }) {
-  if (!open) return null;
-
+  const reduceMotion = useReducedMotion();
   return (
-    <div className="fixed inset-0 z-50">
-      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div
-        className={[
-          "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
-          wide ? "w-[98vw] max-w-[1400px]" : "w-[96vw] max-w-[980px]",
-          "max-h-[92vh] overflow-hidden rounded-lg border border-[var(--subtle)] bg-[var(--panel)] shadow-xl",
-          "flex flex-col",
-        ].join(" ")}
-      >
-        <div className="flex items-center justify-between border-b border-[var(--subtle)] px-4 py-3 shrink-0">
-          <h4 className="text-sm font-semibold">{title}</h4>
-          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-slate-100">
-            <X size={16} />
-          </button>
-        </div>
+    <AnimatePresence initial={false}>
+      {open && (
+        <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+          <motion.div
+            className="absolute inset-0 bg-black/30"
+            onClick={onClose}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={reduceMotion ? { duration: 0 } : { duration: 0.15 }}
+          />
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            <motion.div
+              initial={reduceMotion ? false : { opacity: 0, y: 12, scale: 0.98 }}
+              animate={reduceMotion ? {} : { opacity: 1, y: 0, scale: 1 }}
+              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12, scale: 0.98 }}
+              transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 260, damping: 26 }}
+              className={[
+                wide ? "w-[98vw] max-w-[1400px]" : "w-[96vw] max-w-[980px]",
+                "max-h-[92vh] overflow-hidden rounded-xl border border-[var(--subtle)] bg-[var(--panel)] shadow-2xl",
+                "flex flex-col",
+              ].join(" ")}
+            >
+              <div className="flex items-center justify-between border-b border-[var(--subtle)] px-4 py-3 shrink-0">
+                <h4 className="text-sm font-semibold">{title}</h4>
+                <button type="button" onClick={onClose} className="p-1 rounded hover:bg-slate-100">
+                  <X size={16} />
+                </button>
+              </div>
 
-        {/* contenido con scroll vertical SOLO si se necesita */}
-        <div className="p-4 overflow-y-auto grow">{children}</div>
+              <div className="p-4 overflow-y-auto grow">{children}</div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-[var(--subtle)] px-4 py-3 shrink-0">
-          {actions}
+              <div className="flex items-center justify-end gap-2 border-t border-[var(--subtle)] px-4 py-3 shrink-0">
+                {actions}
+              </div>
+            </motion.div>
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -161,9 +198,23 @@ const CATS = ["Personal", "Honorarios", "Transporte", "Insumos", "Alquiler", "Pa
 
 const hoy = new Date().toISOString().slice(0, 10);
 
+type AdjMeta = { name: string; size?: number; url?: string; mime?: string };
+
+const dedupeAdj = (arr: AdjMeta[]) => {
+  const seen = new Set<string>();
+  return (arr || []).filter((a) => {
+    const k = `${a?.name ?? ""}__${a?.size ?? 0}`;
+    if (!a?.name) return false;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+};
+
 /* ============ Página ============ */
 export default function CostosPage() {
   const title = "Costos y gastos por actividad";
+  const reduceMotion = useReducedMotion();
 
   const [acts, setActs] = useState<Actividad[]>([]);
   const [rows, setRows] = useState<Gasto[]>([]);
@@ -283,14 +334,11 @@ export default function CostosPage() {
 
     const t = toast.loading(draft.id ? "Actualizando..." : "Guardando...");
     try {
-      const saved =
-        draft.id && draft.id > 0 ? await updateGasto(draft.id, payload) : await createGasto(payload);
-
+      const saved = draft.id && draft.id > 0 ? await updateGasto(draft.id, payload) : await createGasto(payload);
       if (!saved) {
         toast.dismiss(t);
         return;
       }
-
       toast.success("Guardado ✅", { id: t });
       setOpenGasto(false);
       await reloadAll();
@@ -356,22 +404,23 @@ export default function CostosPage() {
       <div className="grid gap-6">
         {/* KPIs */}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <div className="rounded border border-[var(--subtle)] bg-white p-3">
-            <div className="text-sm text-slate-500">Presupuesto total</div>
-            <div className="text-xl font-semibold">{money(kpis.totalPres)}</div>
-          </div>
-          <div className="rounded border border-[var(--subtle)] bg-white p-3">
-            <div className="text-sm text-slate-500">Ejecutado</div>
-            <div className="text-xl font-semibold">{money(kpis.totalExec)}</div>
-          </div>
-          <div className="rounded border border-[var(--subtle)] bg-white p-3">
-            <div className="text-sm text-slate-500">Disponible</div>
-            <div className="text-xl font-semibold">{money(kpis.disp)}</div>
-          </div>
-          <div className="rounded border border-[var(--subtle)] bg-white p-3">
-            <div className="text-sm text-slate-500">Ejecución</div>
-            <div className="text-xl font-semibold">{kpis.pct}%</div>
-          </div>
+          {[
+            { label: "Presupuesto total", value: money(kpis.totalPres) },
+            { label: "Ejecutado", value: money(kpis.totalExec) },
+            { label: "Disponible", value: money(kpis.disp) },
+            { label: "Ejecución", value: `${kpis.pct}%` },
+          ].map((k) => (
+            <motion.div
+              key={k.label}
+              initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+              animate={reduceMotion ? {} : { opacity: 1, y: 0 }}
+              transition={reduceMotion ? { duration: 0 } : { duration: 0.14 }}
+              className="rounded border border-[var(--subtle)] bg-white p-3"
+            >
+              <div className="text-sm text-slate-500">{k.label}</div>
+              <div className="text-xl font-semibold">{k.value}</div>
+            </motion.div>
+          ))}
         </div>
 
         {/* Actividades */}
@@ -385,48 +434,69 @@ export default function CostosPage() {
           }
         >
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {acts.map((a) => {
-              const gasto = execByAct[a.id] || 0;
-              const disp = (a.presupuesto || 0) - gasto;
-              const pct = a.presupuesto ? Math.min(100, Math.round((gasto / a.presupuesto) * 100)) : 0;
+            <AnimatePresence initial={false}>
+              {acts.map((a) => {
+                const gasto = execByAct[a.id] || 0;
+                const disp = (a.presupuesto || 0) - gasto;
+                const pct = a.presupuesto ? Math.min(100, Math.round((gasto / a.presupuesto) * 100)) : 0;
 
-              return (
-                <div key={a.id} className="rounded border border-[var(--subtle)] bg-white p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm font-semibold">
-                      {a.codigo} • {a.nombre}
+                return (
+                  <motion.div
+                    key={a.id}
+                    layout
+                    initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+                    animate={reduceMotion ? {} : { opacity: 1, y: 0 }}
+                    exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+                    transition={reduceMotion ? { duration: 0 } : { duration: 0.14 }}
+                    className="rounded border border-[var(--subtle)] bg-white p-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-sm font-semibold">
+                        {a.codigo} • {a.nombre}
+                      </div>
+
+                      {a.estado === "Cerrada" ? (
+                        <span className="inline-flex items-center gap-1 text-emerald-700 text-[12px]">
+                          <CheckCircle2 size={14} /> Cerrada
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => cerrarAct(a.id)}
+                          title="Marcar como cerrada"
+                          className="text-xs text-slate-600 hover:text-emerald-700"
+                        >
+                          Cerrar
+                        </button>
+                      )}
                     </div>
-                    {a.estado === "Cerrada" ? (
-                      <span className="inline-flex items-center gap-1 text-emerald-700 text-[12px]">
-                        <CheckCircle2 size={14} /> Cerrada
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => cerrarAct(a.id)}
-                        title="Marcar como cerrada"
-                        className="text-xs text-slate-600 hover:text-emerald-700"
-                      >
-                        Cerrar
-                      </button>
-                    )}
-                  </div>
-                  <div className="mt-2 text-xs text-slate-600">
-                    Presupuesto: <b>{money(a.presupuesto)}</b>
-                  </div>
-                  <div className="text-xs text-slate-600">
-                    Ejecutado: <b>{money(gasto)}</b> • Disponible: <b>{money(disp)}</b>
-                  </div>
-                  <div className="h-2 mt-2 overflow-hidden rounded bg-slate-100">
-                    <div className="h-full bg-[var(--brand)]" style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-              );
-            })}
+
+                    <div className="mt-2 text-xs text-slate-600">
+                      Presupuesto: <b>{money(a.presupuesto)}</b>
+                    </div>
+                    <div className="text-xs text-slate-600">
+                      Ejecutado: <b>{money(gasto)}</b> • Disponible:{" "}
+                      <b className={disp < 0 ? "text-rose-700" : ""}>{money(disp)}</b>
+                    </div>
+
+                    <div className="h-2 mt-2 overflow-hidden rounded bg-slate-100">
+                      <motion.div
+                        initial={reduceMotion ? false : { width: 0 }}
+                        animate={{ width: `${pct}%` }}
+                        transition={reduceMotion ? { duration: 0 } : { duration: 0.35 }}
+                        className={`h-full ${disp < 0 ? "bg-rose-500" : "bg-[var(--brand)]"}`}
+                      />
+                    </div>
+
+                    <div className="mt-1 text-xs text-slate-500">{pct}% ejecutado</div>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
 
             {!loading && acts.length === 0 && (
               <div className="rounded border border-[var(--subtle)] bg-white p-4 text-sm text-slate-600">
-                Aún no hay actividades. Crea tus actividades con el botón <b>Gestionar actividades</b>.
+                Aún no hay actividades. Crea tus actividades con <b>Gestionar actividades</b>.
               </div>
             )}
           </div>
@@ -444,6 +514,7 @@ export default function CostosPage() {
                   <Input type="date" value={d1} onChange={(e) => setD1(e.target.value)} className="w-40 pl-8" />
                 </div>
                 <Input type="date" value={d2} onChange={(e) => setD2(e.target.value)} className="w-40" />
+
                 <Select value={actId} onChange={(e) => setActId(e.target.value)} className="w-64">
                   <option value="">Actividad: Todas</option>
                   {acts.map((a) => (
@@ -452,6 +523,7 @@ export default function CostosPage() {
                     </option>
                   ))}
                 </Select>
+
                 <Select value={cat} onChange={(e) => setCat(e.target.value)} className="w-44">
                   <option value="">Categoría: Todas</option>
                   {CATS.map((c) => (
@@ -460,7 +532,11 @@ export default function CostosPage() {
                     </option>
                   ))}
                 </Select>
-                <Input placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} className="w-64" />
+
+                <div className="relative">
+                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
+                  <Input placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} className="w-64 pl-8" />
+                </div>
               </div>
 
               <Button variant="outline" type="button" onClick={exportCSV}>
@@ -486,6 +562,7 @@ export default function CostosPage() {
                   <th className="w-48 px-3 py-2 text-left">Acciones</th>
                 </tr>
               </thead>
+
               <tbody>
                 {loading && (
                   <tr>
@@ -495,36 +572,46 @@ export default function CostosPage() {
                   </tr>
                 )}
 
-                {!loading &&
-                  list.map((g) => {
-                    const a = acts.find((x) => x.id === g.actividadId);
-                    return (
-                      <tr key={g.id} className="border-b border-[var(--subtle)]/70">
-                        <td className="py-2 pl-4 pr-3">{g.fecha}</td>
-                        <td className="px-3 py-2">
-                          <div className="flex items-center gap-2">
-                            <Building2 size={14} className="text-slate-400" />
-                            <span className="whitespace-nowrap">{a ? `${a.codigo} • ${a.nombre}` : "—"}</span>
-                          </div>
-                        </td>
-                        <td className="px-3 py-2">{g.categoria}</td>
-                        <td className="px-3 py-2">{g.descripcion}</td>
-                        <td className="px-3 py-2">{g.proveedor || "—"}</td>
-                        <td className="px-3 py-2">{g.documento || "—"}</td>
-                        <td className="px-3 py-2 font-medium text-right">{money(g.valor)}</td>
-                        <td className="px-3 py-2">
-                          <div className="flex items-center gap-2">
-                            <Button variant="outline" type="button" onClick={() => editar(g)}>
-                              <Pencil size={14} /> Editar
-                            </Button>
-                            <Button variant="ghost" type="button" onClick={() => quitar(g.id)}>
-                              <Trash2 size={14} /> Quitar
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                <AnimatePresence initial={false}>
+                  {!loading &&
+                    list.map((g) => {
+                      const a = acts.find((x) => x.id === g.actividadId);
+                      return (
+                        <motion.tr
+                          key={g.id}
+                          layout
+                          initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+                          animate={reduceMotion ? {} : { opacity: 1, y: 0 }}
+                          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+                          transition={reduceMotion ? { duration: 0 } : { duration: 0.14 }}
+                          className="border-b border-[var(--subtle)]/70"
+                        >
+                          <td className="py-2 pl-4 pr-3">{g.fecha}</td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <Building2 size={14} className="text-slate-400" />
+                              <span className="whitespace-nowrap">{a ? `${a.codigo} • ${a.nombre}` : "—"}</span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">{g.categoria}</td>
+                          <td className="px-3 py-2">{g.descripcion}</td>
+                          <td className="px-3 py-2">{g.proveedor || "—"}</td>
+                          <td className="px-3 py-2">{g.documento || "—"}</td>
+                          <td className="px-3 py-2 font-medium text-right">{money(g.valor)}</td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <Button variant="outline" type="button" onClick={() => editar(g)}>
+                                <Pencil size={14} /> Editar
+                              </Button>
+                              <Button variant="ghost" type="button" onClick={() => quitar(g.id)}>
+                                <Trash2 size={14} /> Quitar
+                              </Button>
+                            </div>
+                          </td>
+                        </motion.tr>
+                      );
+                    })}
+                </AnimatePresence>
 
                 {!loading && list.length === 0 && (
                   <tr>
@@ -552,17 +639,12 @@ export default function CostosPage() {
       />
 
       {/* Modal Actividades */}
-      <ActividadesModal
-        open={openActs}
-        setOpen={setOpenActs}
-        acts={acts}
-        onSaved={reloadAll}
-      />
+      <ActividadesModal open={openActs} setOpen={setOpenActs} acts={acts} onSaved={reloadAll} />
     </DashboardShell>
   );
 }
 
-/* ============ Modal de Gasto ============ */
+/* ============ Modal de Gasto (Framer + Dropzone) ============ */
 function GastoModal({
   open,
   setOpen,
@@ -576,12 +658,39 @@ function GastoModal({
   open: boolean;
   setOpen: (v: boolean) => void;
   draft: (Omit<Gasto, "id"> & { id?: number }) | null;
-  setDraft: (g: any) => void;
+  setDraft: React.Dispatch<React.SetStateAction<any>>;
   acts: Actividad[];
   execByAct: Record<number, number>;
   originalValor: number;
   onSave: () => void;
 }) {
+  const [adjSaved, setAdjSaved] = useState<AdjMeta[]>([]);
+  const [adjNew, setAdjNew] = useState<File[]>([]);
+
+  useEffect(() => {
+    if (!open || !draft) return;
+    setAdjSaved(Array.isArray(draft.adjuntos) ? (draft.adjuntos as any) : []);
+    setAdjNew([]);
+  }, [open, draft?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!draft) return;
+
+    const saved = (adjSaved || [])
+      .map((a) => ({
+        name: String((a as any)?.name ?? (a as any)?.nombre ?? "").trim(),
+        size: typeof (a as any)?.size === "number" ? (a as any).size : undefined,
+        url: (a as any)?.url,
+        mime: (a as any)?.mime,
+      }))
+      .filter((a) => a.name);
+
+    const news: AdjMeta[] = (adjNew || []).map((f) => ({ name: f.name, size: f.size, mime: f.type || undefined }));
+
+    const merged = dedupeAdj([...saved, ...news]);
+    setDraft((prev: any) => (prev ? { ...prev, adjuntos: merged } : prev));
+  }, [adjSaved, adjNew]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!draft) return null;
 
   const act = acts.find((a) => a.id === Number(draft.actividadId));
@@ -594,14 +703,7 @@ function GastoModal({
     ? Math.max(0, Math.min(100, Math.round(((ejecutadoSinEste + Number(draft.valor || 0)) / presupuesto) * 100)))
     : 0;
 
-  const onAdj = (files: FileList | null) => {
-    if (!files) return;
-    const arr = Array.from(files).map((f) => ({ name: f.name, size: f.size }));
-    setDraft({ ...draft, adjuntos: [...(draft.adjuntos || []), ...arr] });
-  };
-
-  const rmAdj = (name: string) =>
-    setDraft({ ...draft, adjuntos: (draft.adjuntos || []).filter((a: any) => a.name !== name) });
+  const rmSaved = (name: string) => setAdjSaved((prev) => prev.filter((a) => a.name !== name));
 
   const valid =
     !!draft.actividadId &&
@@ -631,7 +733,10 @@ function GastoModal({
         <div className="grid grid-cols-1 gap-4 lg:col-span-2 md:grid-cols-2">
           <label className="grid gap-1 text-sm">
             <span className="text-slate-700">Actividad</span>
-            <Select value={String(draft.actividadId)} onChange={(e) => setDraft({ ...draft, actividadId: Number(e.target.value) })}>
+            <Select
+              value={String(draft.actividadId)}
+              onChange={(e) => setDraft((p: any) => ({ ...p, actividadId: Number(e.target.value) }))}
+            >
               {acts.map((a) => (
                 <option key={a.id} value={String(a.id)}>
                   {a.codigo} • {a.nombre}
@@ -642,7 +747,7 @@ function GastoModal({
 
           <label className="grid gap-1 text-sm">
             <span className="text-slate-700">Categoría</span>
-            <Select value={String(draft.categoria)} onChange={(e) => setDraft({ ...draft, categoria: e.target.value })}>
+            <Select value={String(draft.categoria)} onChange={(e) => setDraft((p: any) => ({ ...p, categoria: e.target.value }))}>
               {CATS.map((c) => (
                 <option key={c} value={c}>
                   {c}
@@ -653,27 +758,36 @@ function GastoModal({
 
           <label className="grid gap-1 text-sm">
             <span className="text-slate-700">Fecha</span>
-            <Input type="date" value={draft.fecha} onChange={(e) => setDraft({ ...draft, fecha: e.target.value })} />
+            <Input type="date" value={draft.fecha} onChange={(e) => setDraft((p: any) => ({ ...p, fecha: e.target.value }))} />
           </label>
 
           <label className="grid gap-1 text-sm">
             <span className="text-slate-700">Valor</span>
-            <Input type="number" min={0} value={Number(draft.valor || 0)} onChange={(e) => setDraft({ ...draft, valor: Number(e.target.value) })} />
+            <Input
+              type="number"
+              min={0}
+              value={Number(draft.valor || 0)}
+              onChange={(e) => setDraft((p: any) => ({ ...p, valor: Number(e.target.value) }))}
+            />
           </label>
 
           <label className="grid gap-1 text-sm md:col-span-2">
             <span className="text-slate-700">Descripción</span>
-            <Textarea rows={3} value={String(draft.descripcion || "")} onChange={(e) => setDraft({ ...draft, descripcion: e.target.value })} />
+            <Textarea
+              rows={3}
+              value={String(draft.descripcion || "")}
+              onChange={(e) => setDraft((p: any) => ({ ...p, descripcion: e.target.value }))}
+            />
           </label>
 
           <label className="grid gap-1 text-sm">
             <span className="text-slate-700">Proveedor</span>
-            <Input value={String(draft.proveedor || "")} onChange={(e) => setDraft({ ...draft, proveedor: e.target.value })} />
+            <Input value={String(draft.proveedor || "")} onChange={(e) => setDraft((p: any) => ({ ...p, proveedor: e.target.value }))} />
           </label>
 
           <label className="grid gap-1 text-sm">
             <span className="text-slate-700">Método de pago</span>
-            <Select value={String(draft.metodo || "Transferencia")} onChange={(e) => setDraft({ ...draft, metodo: e.target.value })}>
+            <Select value={String(draft.metodo || "Transferencia")} onChange={(e) => setDraft((p: any) => ({ ...p, metodo: e.target.value }))}>
               {["Efectivo", "Transferencia", "Cheque", "Otro"].map((m) => (
                 <option key={m} value={m}>
                   {m}
@@ -684,14 +798,24 @@ function GastoModal({
 
           <label className="grid gap-1 text-sm">
             <span className="text-slate-700">Documento (factura/soporte)</span>
-            <Input value={String(draft.documento || "")} onChange={(e) => setDraft({ ...draft, documento: e.target.value })} />
+            <Input value={String(draft.documento || "")} onChange={(e) => setDraft((p: any) => ({ ...p, documento: e.target.value }))} />
           </label>
 
+          {/* Dropzone */}
           <div className="md:col-span-2 rounded border border-[var(--subtle)] bg-white p-3">
-            <div className="mb-2 text-sm font-semibold">Adjuntos (PDF/otros)</div>
-            <input type="file" multiple onChange={(e) => onAdj(e.target.files)} />
-            {!!draft.adjuntos?.length && (
-              <div className="mt-3 overflow-x-auto">
+            <div className="flex items-center gap-2 mb-2 text-sm font-semibold">
+              <Upload size={16} className="text-[var(--brand)]" />
+              Adjuntos (Dropzone)
+            </div>
+
+            <DocumentDropzone value={adjNew} onChange={setAdjNew} maxFiles={10} maxSizeMB={10} />
+
+            <div className="mt-2 text-xs text-slate-500">
+              En esta versión se guarda la lista/metadata. Si quieres descarga real, luego lo conectamos a storage.
+            </div>
+
+            {adjSaved.length > 0 && (
+              <div className="mt-3 overflow-x-auto rounded-md border border-[var(--subtle)] bg-white">
                 <table className="min-w-full text-sm">
                   <thead className="text-slate-500 border-b border-[var(--subtle)]">
                     <tr>
@@ -701,12 +825,12 @@ function GastoModal({
                     </tr>
                   </thead>
                   <tbody>
-                    {draft.adjuntos.map((a: any) => (
-                      <tr key={a.name} className="border-b border-[var(--subtle)]/60">
+                    {adjSaved.map((a, idx) => (
+                      <tr key={`${a.name}-${a.size ?? 0}-${idx}`} className="border-b border-[var(--subtle)]/60 last:border-b-0">
                         <td className="px-2 py-2">{a.name}</td>
-                        <td className="px-2 py-2">{(a.size / 1024).toFixed(1)} KB</td>
+                        <td className="px-2 py-2">{a.size ? `${(a.size / 1024).toFixed(1)} KB` : "—"}</td>
                         <td className="px-2 py-2">
-                          <Button variant="ghost" type="button" onClick={() => rmAdj(a.name)}>
+                          <Button variant="ghost" type="button" onClick={() => rmSaved(a.name)}>
                             <Trash2 size={14} /> Quitar
                           </Button>
                         </td>
@@ -732,11 +856,12 @@ function GastoModal({
               Ejecutado (estimado): <b>{money(ejecutadoSinEste + Number(draft.valor || 0))}</b>
             </div>
             <div className="text-xs text-slate-600">
-              Disponible estimado: <b>{money(disp)}</b>
+              Disponible estimado: <b className={disp < 0 ? "text-rose-700" : ""}>{money(disp)}</b>
             </div>
             <div className="h-2 mt-2 overflow-hidden rounded bg-slate-100">
-              <div className="h-full bg-[var(--brand)]" style={{ width: `${pct}%` }} />
+              <motion.div className={`h-full ${disp < 0 ? "bg-rose-500" : "bg-[var(--brand)]"}`} style={{ width: `${pct}%` }} />
             </div>
+            {disp < 0 && <div className="mt-2 text-xs text-rose-700">⚠️ Este gasto excede el presupuesto (estimado).</div>}
           </div>
         </div>
       </div>
@@ -837,27 +962,18 @@ function ActividadesModal({
     if (!toDelete) return;
     setConfirmLoading(true);
     const t = toast.loading("Eliminando...");
-
     try {
       const res = await deleteActividad(toDelete.id);
-
-      // ✅ soporte robusto: boolean / {ok:true} / {success:true}
-      const ok =
-        res === true ||
-        (typeof res === "object" && (res?.ok === true || res?.success === true));
-
+      const ok = res === true || (typeof res === "object" && (res as any)?.ok === true) || (typeof res === "object" && (res as any)?.success === true);
       if (!ok) {
-        // si tu deleteActividad devuelve false sin tirar error
         toast.dismiss(t);
         toast.error("No se pudo eliminar la actividad.");
         return;
       }
 
       toast.success("Actividad eliminada ✅", { id: t });
-
       setLocal((prev) => prev.filter((x) => x.id !== toDelete.id));
       await onSaved?.();
-
       setConfirmOpen(false);
       setToDelete(null);
     } catch (e: any) {
@@ -887,7 +1003,6 @@ function ActividadesModal({
           </>
         }
       >
-        {/* Crear */}
         <div className="mb-4 rounded border border-[var(--subtle)] bg-white p-3">
           <div className="mb-2 text-sm font-semibold">Crear actividad</div>
           <div className="grid grid-cols-1 gap-2 md:grid-cols-[220px_1fr_220px_160px]">
@@ -899,11 +1014,10 @@ function ActividadesModal({
             </Button>
           </div>
           <div className="mt-2 text-xs text-slate-500">
-            * Si una actividad ya tiene gastos asociados, la API no permitirá eliminarla.
+            * Si una actividad ya tiene gastos asociados, la API podría bloquear la eliminación.
           </div>
         </div>
 
-        {/* Tabla */}
         <div className="overflow-x-auto">
           <table className="w-full text-sm table-fixed">
             <thead className="border-b border-[var(--subtle)] text-slate-500">
@@ -938,12 +1052,7 @@ function ActividadesModal({
                     </Select>
                   </td>
                   <td className="px-3 py-2">
-                    <Button
-                      variant="ghost"
-                      type="button"
-                      onClick={() => askDelete(a)}
-                      className="text-rose-600 hover:text-rose-700"
-                    >
+                    <Button variant="danger" type="button" onClick={() => askDelete(a)}>
                       <Trash2 size={14} /> Eliminar
                     </Button>
                   </td>

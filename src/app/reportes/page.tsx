@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import React, { useMemo, useState, type ReactNode } from "react";
 import DashboardShell from "../_components/DashboardShell";
 import toast from "react-hot-toast";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   FileText,
   Filter,
@@ -15,7 +16,6 @@ import {
   Package,
   Wallet,
   ClipboardList,
-  MessagesSquare,
 } from "lucide-react";
 
 /* ================= UI helpers ================= */
@@ -27,6 +27,7 @@ function Button({
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "solid" | "outline" | "ghost";
 }) {
+  const reduceMotion = useReducedMotion();
   const base = "inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm transition";
   const styles =
     variant === "solid"
@@ -34,12 +35,20 @@ function Button({
       : variant === "outline"
       ? "border border-[var(--subtle)] hover:bg-white"
       : "hover:bg-white";
+
   return (
-    <button className={`${base} ${styles} ${className}`} {...props}>
+    <motion.button
+      whileHover={reduceMotion ? undefined : { scale: 1.01 }}
+      whileTap={reduceMotion ? undefined : { scale: 0.98 }}
+      transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 28 }}
+      className={`${base} ${styles} ${className}`}
+      {...props}
+    >
       {children}
-    </button>
+    </motion.button>
   );
 }
+
 function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
@@ -49,6 +58,7 @@ function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
     />
   );
 }
+
 function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select
@@ -58,6 +68,7 @@ function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
     />
   );
 }
+
 function Card({
   title,
   value,
@@ -69,17 +80,24 @@ function Card({
   icon: React.ReactNode;
   hint?: string;
 }) {
+  const reduceMotion = useReducedMotion();
   return (
-    <div className="rounded-lg border border-[var(--subtle)] bg-white p-4">
+    <motion.div
+      initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+      animate={reduceMotion ? {} : { opacity: 1, y: 0 }}
+      transition={reduceMotion ? { duration: 0 } : { duration: 0.14 }}
+      className="rounded-lg border border-[var(--subtle)] bg-white p-4"
+    >
       <div className="flex items-center justify-between">
         <div className="text-sm text-slate-500">{title}</div>
         <div className="text-slate-400">{icon}</div>
       </div>
       <div className="mt-1 text-2xl font-semibold">{value}</div>
       {hint && <div className="mt-1 text-xs text-slate-500">{hint}</div>}
-    </div>
+    </motion.div>
   );
 }
+
 function Section({
   title,
   icon,
@@ -91,8 +109,15 @@ function Section({
   right?: React.ReactNode;
   children: React.ReactNode;
 }) {
+  const reduceMotion = useReducedMotion();
   return (
-    <div className="rounded-lg border border-[var(--subtle)] bg-[var(--panel)]">
+    <motion.div
+      layout
+      initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+      animate={reduceMotion ? {} : { opacity: 1, y: 0 }}
+      transition={reduceMotion ? { duration: 0 } : { duration: 0.16 }}
+      className="rounded-lg border border-[var(--subtle)] bg-[var(--panel)]"
+    >
       <div className="flex items-center justify-between border-b border-[var(--subtle)] px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="text-[var(--brand)]">{icon}</span>
@@ -101,7 +126,7 @@ function Section({
         <div className="flex items-center gap-2">{right}</div>
       </div>
       <div className="p-4">{children}</div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -157,8 +182,9 @@ function printTable(title: string, headers: string[], rows: Record<string, any>[
         h1{font-size:18px; margin:0 0 10px}
         .meta{font-size:12px; color:#475569; margin-bottom:12px}
         table{border-collapse:collapse; width:100%}
-        th,td{border:1px solid #e2e8f0; padding:8px; font-size:12px; text-align:left}
+        th,td{border:1px solid #e2e8f0; padding:8px; font-size:12px; text-align:left; vertical-align:top}
         th{background:#f8fafc}
+        .wrap{white-space:pre-wrap}
       </style>
     </head>
     <body>
@@ -173,7 +199,7 @@ function printTable(title: string, headers: string[], rows: Record<string, any>[
             .map(
               (r) =>
                 `<tr>${headers
-                  .map((h) => `<td>${String(r[h] ?? "")}</td>`)
+                  .map((h) => `<td class="wrap">${String(r[h] ?? "")}</td>`)
                   .join("")}</tr>`
             )
             .join("")}
@@ -245,12 +271,11 @@ const REPORTS: Array<{
   },
 ];
 
-/* ================= Backend (SOLO COSTOS) ================= */
+/* ================= Backend calls ================= */
 type Act = { id: number; codigo: string; nombre: string };
 type Gasto = { fecha: any; actividadId: number; categoria: string; descripcion: string; valor: number };
 
 async function fetchCostosRows(filters: { d1: string; d2: string; q: string }) {
-  // 1) actividades
   const rA = await fetch(`/api/costos/actividades?ts=${Date.now()}`, {
     cache: "no-store",
     headers: { "cache-control": "no-cache", pragma: "no-cache" },
@@ -261,7 +286,6 @@ async function fetchCostosRows(filters: { d1: string; d2: string; q: string }) {
   const actMap = new Map<number, string>();
   acts.forEach((a) => actMap.set(a.id, `${a.codigo} • ${a.nombre}`));
 
-  // 2) gastos (tu API ya filtra por q/categoria/actividadId, pero aquí usamos solo q+d1+d2)
   const sp = new URLSearchParams();
   if (filters.q) sp.set("q", filters.q);
   if (filters.d1) sp.set("d1", filters.d1);
@@ -278,7 +302,6 @@ async function fetchCostosRows(filters: { d1: string; d2: string; q: string }) {
   if (!rG.ok) throw new Error(errMsg(gBody, `HTTP ${rG.status}`));
   const gastos = (Array.isArray(gBody?.items) ? gBody.items : Array.isArray(gBody) ? gBody : []) as Gasto[];
 
-  // 3) map a filas del informe
   return gastos.map((g) => ({
     fecha: toYMD(g.fecha),
     actividad: actMap.get(Number(g.actividadId)) ?? `Actividad ${g.actividadId}`,
@@ -296,7 +319,7 @@ type EntregaApi = {
   kit?: string | null;
   items?: any;
   observaciones?: string | null;
-  beneficiario?: any; // puede venir como {doc,nombre} o {doc,nombres,apellidos}
+  beneficiario?: any;
 };
 
 function normKey(v: any) {
@@ -306,35 +329,25 @@ function normKey(v: any) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 }
-
 function estadoEntregaToUi(v: any) {
   const k = normKey(v);
   if (k === "PENDIENTE") return "Pendiente";
   if (k === "PARCIAL") return "Parcial";
-  if (k === "ENTREGADO") return "Entregado";
-  // si ya viene como UI
-  if (k === "PENDIENTE") return "Pendiente";
-  if (k === "PARCIAL") return "Parcial";
-  if (k === "ENTREGADA" || k === "ENTREGADO") return "Entregado";
+  if (k === "ENTREGADO" || k === "ENTREGADA") return "Entregado";
   return String(v ?? "");
 }
-
 function beneficiarioNombre(b: any) {
   if (!b) return "";
   if (typeof b?.nombre === "string" && b.nombre.trim()) return b.nombre.trim();
   const nom = `${b?.nombres ?? ""} ${b?.apellidos ?? ""}`.trim();
   return nom || "";
 }
-
 function itemsCount(items: any) {
   if (!items) return 0;
   if (Array.isArray(items)) return items.length;
-  // si viene como objeto (json), lo contamos como 1 para no explotar
   return 1;
 }
-
 async function fetchEntregasRows(filters: { d1: string; d2: string; q: string }) {
-  // Compat: algunos backends usan r1/r2, otros d1/d2
   const sp = new URLSearchParams();
   if (filters.q) sp.set("q", filters.q);
   if (filters.d1) {
@@ -353,7 +366,6 @@ async function fetchEntregasRows(filters: { d1: string; d2: string; q: string })
     cache: "no-store",
     headers: { "cache-control": "no-cache", pragma: "no-cache" },
   });
-
   const body = await readJsonOrText(res);
   if (!res.ok) throw new Error(errMsg(body, `HTTP ${res.status}`));
 
@@ -362,7 +374,6 @@ async function fetchEntregasRows(filters: { d1: string; d2: string; q: string })
   return items.map((r) => {
     const ben = r.beneficiario ?? {};
     const doc = String(ben?.doc ?? ben?.documento ?? "").trim();
-
     return {
       comprobante: String(r.comprobante ?? ""),
       fecha: toYMD(r.fecha),
@@ -384,7 +395,7 @@ type PqrsApi = {
   estado?: string;
   origen?: string;
   canal?: string;
-  solicitante?: any; // Json
+  solicitante?: any;
   asunto?: string;
   responsable?: string | null;
   vencimiento?: any;
@@ -394,11 +405,10 @@ function pqrsStatusToUi(v: any) {
   const k = normKey(v);
   if (k === "ABIERTA") return "Abierta";
   if (k === "EN_TRAMITE") return "En trámite";
-  if (k === "RE_ABIERTO" || k === "REABIERTO") return "Re-abierto";
+  if (k === "RE_ABIERTO" || k === "REABIERTO") return "Re Abierto";
   if (k === "CERRADA") return "Cerrada";
   return String(v ?? "");
 }
-
 function pqrsTipoToUi(v: any) {
   const k = normKey(v);
   if (k === "PETICION") return "Petición";
@@ -407,14 +417,12 @@ function pqrsTipoToUi(v: any) {
   if (k === "SUGERENCIA") return "Sugerencia";
   return String(v ?? "");
 }
-
 function pqrsOrigenToUi(v: any) {
   const k = normKey(v);
   if (k === "BENEFICIARIO") return "Beneficiario";
   if (k === "TERCERO") return "Tercero";
   return String(v ?? "");
 }
-
 function pqrsCanalToUi(v: any) {
   const k = normKey(v);
   if (k === "WEB") return "Web";
@@ -423,19 +431,14 @@ function pqrsCanalToUi(v: any) {
   if (k === "EMAIL") return "Email";
   return String(v ?? "");
 }
-
 function solicitanteLabel(s: any) {
   if (!s || typeof s !== "object") return "";
   const nombre =
     String(s?.nombre ?? "").trim() ||
     `${String(s?.nombres ?? "").trim()} ${String(s?.apellidos ?? "").trim()}`.trim();
   const doc = String(s?.doc ?? s?.documento ?? "").trim();
-  const tel = String(s?.telefono ?? s?.celular ?? "").trim();
-  const email = String(s?.email ?? "").trim();
-  const parts = [nombre || "", doc ? `(${doc})` : "", tel ? `📞 ${tel}` : "", email ? `✉️ ${email}` : ""].filter(Boolean);
-  return parts.join(" ");
+  return [nombre, doc ? `(${doc})` : ""].filter(Boolean).join(" ");
 }
-
 async function fetchPqrsRows(filters: { d1: string; d2: string; q: string }) {
   const sp = new URLSearchParams();
   if (filters.q) sp.set("q", filters.q);
@@ -445,12 +448,10 @@ async function fetchPqrsRows(filters: { d1: string; d2: string; q: string }) {
   sp.set("pageSize", "500");
   sp.set("ts", String(Date.now()));
 
-  // ✅ OJO: si tu ruta es distinta, cámbiala aquí:
   const res = await fetch(`/api/pqrs?${sp.toString()}`, {
     cache: "no-store",
     headers: { "cache-control": "no-cache", pragma: "no-cache" },
   });
-
   const body = await readJsonOrText(res);
   if (!res.ok) throw new Error(errMsg(body, `HTTP ${res.status}`));
 
@@ -468,48 +469,25 @@ async function fetchPqrsRows(filters: { d1: string; d2: string; q: string }) {
     responsable: String(r.responsable ?? "—"),
     vencimiento: r.vencimiento ? toYMD(r.vencimiento) : "",
   }));
-
-  type InscripcionApi = {
-  id?: number;
-  radicado?: string;
-  fecha?: any;
-  tipo?: string;
-  candidato?: any; // Json
-  cargo?: string;
-  actividad?: string;
-  estado?: string;
-  evaluacion?: any; // Json
-  contrato?: any;   // object o null
-};
-
-function candidatoNombre(c: any) {
-  if (!c || typeof c !== "object") return "";
-  const n = String(c?.nombres ?? "").trim();
-  const a = String(c?.apellidos ?? "").trim();
-  return `${n} ${a}`.trim();
-}
 }
 
 type InscripcionApi = {
-  id?: number;
   radicado?: string;
   fecha?: any;
   tipo?: string;
-  candidato?: any; // Json
+  candidato?: any;
   cargo?: string;
   actividad?: string;
   estado?: string;
-  evaluacion?: any; // Json
-  contrato?: any;   // object o null
+  evaluacion?: any;
+  contrato?: any;
 };
-
 function candidatoNombre(c: any) {
   if (!c || typeof c !== "object") return "";
   const n = String(c?.nombres ?? "").trim();
   const a = String(c?.apellidos ?? "").trim();
   return `${n} ${a}`.trim();
 }
-
 async function fetchInscripcionesRows(filters: { d1: string; d2: string; q: string }) {
   const sp = new URLSearchParams();
   if (filters.q) sp.set("q", filters.q);
@@ -517,25 +495,22 @@ async function fetchInscripcionesRows(filters: { d1: string; d2: string; q: stri
   sp.set("pageSize", "500");
   sp.set("ts", String(Date.now()));
 
-  // ✅ si tu ruta es distinta, cámbiala aquí:
   const res = await fetch(`/api/inscripciones?${sp.toString()}`, {
     cache: "no-store",
     headers: { "cache-control": "no-cache", pragma: "no-cache" },
   });
-
   const body = await readJsonOrText(res);
   if (!res.ok) throw new Error(errMsg(body, `HTTP ${res.status}`));
 
   const items = (Array.isArray(body?.items) ? body.items : Array.isArray(body) ? body : []) as InscripcionApi[];
 
-  // 🔎 filtro de fechas local (porque tu API aún no filtra por d1/d2)
-  const d1 = filters.d1 || "";
-  const d2 = filters.d2 || "";
+  const f1 = filters.d1 || "";
+  const f2 = filters.d2 || "";
 
   const filtered = items.filter((r) => {
     const f = toYMD(r.fecha);
-    const ok1 = !d1 || (f && f >= d1);
-    const ok2 = !d2 || (f && f <= d2);
+    const ok1 = !f1 || (f && f >= f1);
+    const ok2 = !f2 || (f && f <= f2);
     return ok1 && ok2;
   });
 
@@ -574,8 +549,9 @@ async function fetchInscripcionesRows(filters: { d1: string; d2: string; q: stri
 }
 
 /* ================= Page ================= */
-export default function Page() {
+export default function InformesPage() {
   const title = "Informes";
+  const reduceMotion = useReducedMotion();
 
   const [report, setReport] = useState<ReportKey>("costos");
   const [d1, setD1] = useState(daysAgo(30));
@@ -590,37 +566,35 @@ export default function Page() {
 
   const kpis = useMemo(() => {
     const total = rows.length;
-    const sumValor = rows.reduce((acc, r) => acc + (Number(r.valor) || 0), 0);
-    const unique = new Set(rows.map((r) => r.actividad || r.estado || r.tipo || r.beneficiario)).size;
-    return { total, sumValor, unique };
-  }, [rows]);
+    const sumValor = def.headers.includes("valor")
+      ? rows.reduce((acc, r) => acc + (Number(r.valor) || 0), 0)
+      : 0;
+
+    const groupKey =
+      report === "costos" ? "actividad" : report === "entregas" ? "estado" : report === "pqrs" ? "estado" : "actividad";
+    const unique = new Set(rows.map((r) => String(r[groupKey] ?? "").trim()).filter(Boolean)).size;
+
+    return { total, sumValor, unique, groupKey };
+  }, [rows, report, def.headers]);
 
   const onGenerate = async () => {
     setGenerated(true);
     setLoading(true);
     try {
-      // ✅ SOLO “costos” real, lo demás mock por ahora
       if (report === "costos") {
-        const data = await fetchCostosRows({ d1, d2, q });
-        setRows(data);
+        setRows(await fetchCostosRows({ d1, d2, q }));
         return;
       }
-
-      // mocks mientras conectamos APIs
-      const t = q.trim().toLowerCase();
       if (report === "entregas") {
-        const data = await fetchEntregasRows({ d1, d2, q });
-        setRows(data);
+        setRows(await fetchEntregasRows({ d1, d2, q }));
         return;
       }
       if (report === "pqrs") {
-        const data = await fetchPqrsRows({ d1, d2, q });
-        setRows(data);
+        setRows(await fetchPqrsRows({ d1, d2, q }));
         return;
       }
       if (report === "inscripciones") {
-        const data = await fetchInscripcionesRows({ d1, d2, q });
-        setRows(data);
+        setRows(await fetchInscripcionesRows({ d1, d2, q }));
         return;
       }
     } catch (e: any) {
@@ -717,14 +691,14 @@ export default function Page() {
             <Card
               title="Total valor (si aplica)"
               value={
-                report === "costos"
+                def.headers.includes("valor")
                   ? new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(kpis.sumValor)
                   : "—"
               }
               icon={<Wallet size={16} />}
-              hint={report !== "costos" ? "Este informe no suma valor." : undefined}
+              hint={!def.headers.includes("valor") ? "Este informe no suma valor." : undefined}
             />
-            <Card title="Agrupaciones" value={String(kpis.unique)} icon={<span className="text-slate-400">∑</span>} />
+            <Card title={`Agrupaciones (${kpis.groupKey})`} value={String(kpis.unique)} icon={<span className="text-slate-400">∑</span>} />
           </div>
         )}
 
@@ -749,12 +723,13 @@ export default function Page() {
                 <thead className="border-b border-[var(--subtle)] text-slate-500">
                   <tr>
                     {def.headers.map((h) => (
-                      <th key={h} className="px-3 py-2 text-left">
+                      <th key={h} className="px-3 py-2 text-left whitespace-nowrap">
                         {h}
                       </th>
                     ))}
                   </tr>
                 </thead>
+
                 <tbody>
                   {loading && (
                     <tr>
@@ -764,16 +739,25 @@ export default function Page() {
                     </tr>
                   )}
 
-                  {!loading &&
-                    rows.map((r, idx) => (
-                      <tr key={idx} className="border-b border-[var(--subtle)]/70">
-                        {def.headers.map((h) => (
-                          <td key={h} className="px-3 py-2">
-                            {String(r[h] ?? "—")}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
+                  <AnimatePresence initial={false}>
+                    {!loading &&
+                      rows.map((r, idx) => (
+                        <motion.tr
+                          key={idx}
+                          initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+                          animate={reduceMotion ? {} : { opacity: 1, y: 0 }}
+                          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+                          transition={reduceMotion ? { duration: 0 } : { duration: 0.12 }}
+                          className="border-b border-[var(--subtle)]/70"
+                        >
+                          {def.headers.map((h) => (
+                            <td key={h} className="px-3 py-2 align-top">
+                              <span className="whitespace-pre-wrap">{String(r[h] ?? "—")}</span>
+                            </td>
+                          ))}
+                        </motion.tr>
+                      ))}
+                  </AnimatePresence>
 
                   {!loading && rows.length === 0 && (
                     <tr>
