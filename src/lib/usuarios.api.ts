@@ -1,8 +1,9 @@
+// src/lib/usuarios.api.ts
 import toast from "react-hot-toast";
 
 export type Usuario = {
   id: number;
-  usuario: string;          // ✅ nuevo
+  usuario: string;
   email: string;
   nombre?: string | null;
   activo: boolean;
@@ -23,20 +24,26 @@ function errMsg(data: any, fallback: string) {
   return (typeof data === "object" ? data?.error || data?.message : data) || fallback;
 }
 
+const API_BASE = "/api/usuarios"; // ✅ tu ruta real (no /api/users)
+
 export async function getUsers(params?: { q?: string }): Promise<Usuario[]> {
   try {
     const sp = new URLSearchParams();
     if (params?.q) sp.set("q", params.q);
+    sp.set("page", "1");
+    sp.set("pageSize", "200");
     sp.set("ts", String(Date.now()));
 
-    const res = await fetch(`/api/users?${sp.toString()}`, {
+    const res = await fetch(`${API_BASE}?${sp.toString()}`, {
       cache: "no-store",
+      credentials: "include",
       headers: { "cache-control": "no-cache", pragma: "no-cache" },
     });
 
     const body = await readJsonOrText(res);
     if (!res.ok) throw new Error(errMsg(body, `HTTP ${res.status}`));
 
+    // tu GET devuelve: { total, page, pageSize, items: [...] }
     const items = Array.isArray(body?.items) ? body.items : Array.isArray(body) ? body : [];
     return items as Usuario[];
   } catch (e: any) {
@@ -46,7 +53,7 @@ export async function getUsers(params?: { q?: string }): Promise<Usuario[]> {
 }
 
 export async function createUser(data: {
-  usuario: string;          // ✅ nuevo
+  usuario: string;
   email: string;
   password: string;
   nombre?: string;
@@ -56,10 +63,18 @@ export async function createUser(data: {
 }): Promise<Usuario | null> {
   const t = toast.loading("Creando usuario...");
   try {
-    const res = await fetch("/api/users", {
+    const payload: any = {
+      ...data,
+      // compat: algunos backends esperan "estado"
+      ...(typeof data.activo === "boolean" ? { estado: data.activo ? "Activo" : "Inactivo" } : {}),
+    };
+
+    const res = await fetch(`${API_BASE}?ts=${Date.now()}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "cache-control": "no-cache" },
-      body: JSON.stringify(data),
+      cache: "no-store",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", "cache-control": "no-cache", pragma: "no-cache" },
+      body: JSON.stringify(payload),
     });
 
     const body = await readJsonOrText(res);
@@ -75,14 +90,30 @@ export async function createUser(data: {
 
 export async function updateUser(
   id: number,
-  data: Partial<{ usuario: string; nombre: string; activo: boolean; roleIds: number[]; roleId: number }>
+  data: Partial<{
+    usuario: string;
+    nombre: string;
+    email: string;          // ✅ AHORA SÍ
+    activo: boolean;
+    roleIds: number[];
+    roleId: number;
+    password: string;
+  }>
 ): Promise<Usuario | null> {
   const t = toast.loading("Guardando usuario...");
   try {
-    const res = await fetch(`/api/users/${id}`, {
+    const payload: any = {
+      ...data,
+      // compat: algunos backends esperan "estado"
+      ...(typeof data.activo === "boolean" ? { estado: data.activo ? "Activo" : "Inactivo" } : {}),
+    };
+
+    const res = await fetch(`${API_BASE}/${id}?ts=${Date.now()}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json", "cache-control": "no-cache" },
-      body: JSON.stringify(data),
+      cache: "no-store",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", "cache-control": "no-cache", pragma: "no-cache" },
+      body: JSON.stringify(payload),
     });
 
     const body = await readJsonOrText(res);
@@ -99,9 +130,11 @@ export async function updateUser(
 export async function deleteUser(id: number): Promise<boolean> {
   const t = toast.loading("Eliminando usuario...");
   try {
-    const res = await fetch(`/api/users/${id}`, {
+    const res = await fetch(`${API_BASE}/${id}?ts=${Date.now()}`, {
       method: "DELETE",
-      headers: { "cache-control": "no-cache" },
+      cache: "no-store",
+      credentials: "include",
+      headers: { "cache-control": "no-cache", pragma: "no-cache" },
     });
 
     const body = await readJsonOrText(res);
