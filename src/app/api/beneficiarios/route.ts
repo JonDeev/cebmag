@@ -1,30 +1,103 @@
-import { NextResponse } from "next/server";
+// src/app/api/beneficiarios/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { TipoDocumento, Sexo, Zona, GrupoRH, DiscapacidadTipo, Prisma } from "@prisma/client";
+import { Prisma, TipoDocumento, Sexo, Zona, GrupoRH, DiscapacidadTipo } from "@prisma/client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/* ==== helpers de mapeo desde la UI ==== */
-const mapSexo = (s?: string | null): Sexo | null | undefined => {
+/* ================= Helpers ================= */
+function clean(v: any) {
+  return String(v ?? "").trim();
+}
+
+function normKey(v: any) {
+  return clean(v)
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function cleanUpper(v: any) {
+  const t = clean(v);
+  return t ? t.toUpperCase() : "";
+}
+
+function cleanUpperOpt(v: any) {
+  if (v === null) return null;
+  if (typeof v === "undefined") return undefined;
+  const t = clean(v);
+  return t ? t.toUpperCase() : undefined;
+}
+
+function cleanOpt(v: any) {
+  if (v === null) return null;
+  if (typeof v === "undefined") return undefined;
+  const t = clean(v);
+  return t ? t : undefined;
+}
+
+function lowerEmailOpt(v: any) {
+  if (v === null) return null;
+  if (typeof v === "undefined") return undefined;
+  const t = clean(v).toLowerCase();
+  return t ? t : undefined;
+}
+
+function joinParts(...parts: Array<string | null | undefined>) {
+  return parts
+    .map((x) => String(x ?? "").trim())
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+}
+
+function split2(full: any): { a: string; b: string } {
+  const s = clean(full);
+  if (!s) return { a: "", b: "" };
+  const parts = s.split(/\s+/).filter(Boolean);
+  return { a: parts[0] ?? "", b: parts.slice(1).join(" ") ?? "" };
+}
+
+function deepTrimStrings(val: any): any {
+  if (val === null || typeof val === "undefined") return val;
+  if (typeof val === "string") return val.trim();
+  if (Array.isArray(val)) return val.map(deepTrimStrings);
+  if (typeof val === "object") {
+    const out: any = {};
+    for (const [k, v] of Object.entries(val)) out[k] = deepTrimStrings(v);
+    return out;
+  }
+  return val;
+}
+
+const mapSexo = (s?: any): Sexo | null | undefined => {
   if (s === null) return null;
-  if (!s) return undefined;
-  const t = s.toLowerCase();
-  if (t.startsWith("fem")) return Sexo.FEMENINO;
-  if (t.startsWith("mas")) return Sexo.MASCULINO;
+  if (typeof s === "undefined") return undefined;
+  const k = normKey(s);
+  if (!k) return undefined;
+  if (k.startsWith("FEM")) return Sexo.FEMENINO;
+  if (k.startsWith("MAS")) return Sexo.MASCULINO;
   return Sexo.OTRO;
 };
 
-const mapZona = (z?: string | null): Zona | null | undefined => {
+const mapZona = (z?: any): Zona | null | undefined => {
   if (z === null) return null;
-  if (!z) return undefined;
-  return z.toLowerCase().startsWith("u") ? Zona.URBANA : Zona.RURAL;
+  if (typeof z === "undefined") return undefined;
+  const k = normKey(z);
+  if (!k) return undefined;
+  if (k.startsWith("U")) return Zona.URBANA;
+  if (k.startsWith("R")) return Zona.RURAL;
+  return undefined;
 };
 
-const mapRH = (rh?: string | null): GrupoRH | null | undefined => {
+const mapRH = (rh?: any): GrupoRH | null | undefined => {
   if (rh === null) return null;
-  if (!rh) return undefined;
-  const v = rh.toUpperCase().replace(/\s+/g, "");
+  if (typeof rh === "undefined") return undefined;
+
+  const v = normKey(rh).replace(/\s+/g, "");
+  if (!v) return undefined;
+
   const map: Record<string, GrupoRH> = {
     "O+": GrupoRH.O_POS,
     "O-": GrupoRH.O_NEG,
@@ -35,7 +108,6 @@ const mapRH = (rh?: string | null): GrupoRH | null | undefined => {
     "AB+": GrupoRH.AB_POS,
     "AB-": GrupoRH.AB_NEG,
 
-    // por si llega como enum:
     O_POS: GrupoRH.O_POS,
     O_NEG: GrupoRH.O_NEG,
     A_POS: GrupoRH.A_POS,
@@ -45,199 +117,344 @@ const mapRH = (rh?: string | null): GrupoRH | null | undefined => {
     AB_POS: GrupoRH.AB_POS,
     AB_NEG: GrupoRH.AB_NEG,
   };
-  return map[v] ?? null;
+
+  // ✅ si no coincide, NO lo borres
+  return map[v] ?? undefined;
 };
 
-const mapDiscapacidad = (d?: string | null): DiscapacidadTipo | null | undefined => {
+const mapDiscapacidad = (d?: any): DiscapacidadTipo | null | undefined => {
   if (d === null) return null;
-  if (!d) return undefined;
-  const t = d.toLowerCase();
+  if (typeof d === "undefined") return undefined;
+
+  const t = clean(d).toLowerCase();
+  if (!t) return undefined;
+
+  if (t.includes("ninguna")) return DiscapacidadTipo.NINGUNA;
   if (t.includes("visual")) return DiscapacidadTipo.VISUAL;
   if (t.includes("audit")) return DiscapacidadTipo.AUDITIVA;
   if (t.includes("motor")) return DiscapacidadTipo.MOTORA;
   if (t.includes("cogn")) return DiscapacidadTipo.COGNITIVA;
-  if (t.includes("ninguna") || t === "") return DiscapacidadTipo.NINGUNA;
-  return DiscapacidadTipo.OTRA;
+  if (t.includes("otra")) return DiscapacidadTipo.OTRA;
+
+  return undefined;
 };
 
-const coerceDate = (s?: string | null): Date | null | undefined => {
+const coerceDate = (s?: any): Date | null | undefined => {
   if (s === null) return null;
-  if (!s) return undefined;
-  const d = new Date(s);
+  if (typeof s === "undefined") return undefined;
+  const t = clean(s);
+  if (!t) return undefined;
+  const d = new Date(t);
   return Number.isNaN(d.getTime()) ? undefined : d;
 };
 
 const toIntId = (v: any): number | null => {
   if (v === null || typeof v === "undefined") return null;
-  const n = typeof v === "number" ? v : Number(String(v).trim());
+  const n = typeof v === "number" ? v : Number(clean(v));
   return Number.isFinite(n) ? n : null;
 };
 
-const cleanString = (v: any) => {
-  if (v === null) return null;
-  if (typeof v === "undefined") return undefined;
-  if (typeof v !== "string") return v;
+function tipoDocFrom(body: any): TipoDocumento {
+  const raw = clean(body.tipoDoc ?? body.tipo_doc ?? "CC");
+  // si te llega algo raro, cae a CC
+  const all = Object.values(TipoDocumento) as string[];
+  return (all.includes(raw) ? raw : "CC") as TipoDocumento;
+}
 
-  const t = v.trim();
-  return t === "" ? undefined : t.toUpperCase();
-};
+/** Lee nombres separados (camel/snake). Si no vienen, usa nombres/apellidos y los parte */
+function readSplitNames(body: any) {
+  const pn = clean(body.primerNombre ?? body.primer_nombre);
+  const sn = clean(body.segundoNombre ?? body.segundo_nombre);
+  const pa = clean(body.primerApellido ?? body.primer_apellido);
+  const sa = clean(body.segundoApellido ?? body.segundo_apellido);
 
-const upperJsonStrings = (val: any): any => {
-  if (val === null || typeof val === "undefined") return val;
-  if (typeof val === "string") return val.trim().toUpperCase();
-  if (Array.isArray(val)) return val.map(upperJsonStrings);
-  if (typeof val === "object") {
-    const out: any = {};
-    for (const [k, v] of Object.entries(val)) out[k] = upperJsonStrings(v);
-    return out;
+  const touchedSplit =
+    "primerNombre" in body ||
+    "primer_nombre" in body ||
+    "segundoNombre" in body ||
+    "segundo_nombre" in body ||
+    "primerApellido" in body ||
+    "primer_apellido" in body ||
+    "segundoApellido" in body ||
+    "segundo_apellido" in body;
+
+  if (touchedSplit) {
+    return {
+      primerNombre: pn,
+      segundoNombre: sn,
+      primerApellido: pa,
+      segundoApellido: sa,
+      nombres: joinParts(pn, sn),
+      apellidos: joinParts(pa, sa),
+      touchedSplit: true,
+    };
   }
-  return val;
-};
 
-/** CREATE: exige mínimos y permite defaults */
-function mapPayloadCreate(body: any): Prisma.BeneficiarioCreateInput {
-  const tipoDoc = (body.tipoDoc || body.tipo_doc || "CC") as TipoDocumento;
-  const doc = String(body.doc ?? body.num_doc ?? "").trim();
+  // compat con payload viejo
+  const nombresIn = clean(body.nombres ?? "");
+  const apellidosIn = clean(body.apellidos ?? "");
+  const n = split2(nombresIn);
+  const a = split2(apellidosIn);
 
-  const data: Prisma.BeneficiarioCreateInput = {
+  return {
+    primerNombre: n.a,
+    segundoNombre: n.b,
+    primerApellido: a.a,
+    segundoApellido: a.b,
+    nombres: nombresIn,
+    apellidos: apellidosIn,
+    touchedSplit: false,
+  };
+}
+
+/* ================= Payload mappers ================= */
+
+/** CREATE: exige mínimos */
+function mapPayloadCreate(body: any): Prisma.BeneficiarioCreateInput & Record<string, any> {
+  const tipoDoc = tipoDocFrom(body);
+
+  const docRaw = clean(body.doc ?? body.num_doc);
+  const doc = docRaw ? docRaw.toUpperCase() : "";
+
+  const split = readSplitNames(body);
+
+  // ✅ si no mandaron nombres/apellidos pero sí split, construimos compat
+  const nombresFinal = clean(split.nombres) || joinParts(split.primerNombre, split.segundoNombre);
+  const apellidosFinal = clean(split.apellidos) || joinParts(split.primerApellido, split.segundoApellido);
+
+  const data: Prisma.BeneficiarioCreateInput & Record<string, any> = {
     tipoDoc,
     doc,
-    nombres: String(body.nombres ?? "").trim().toUpperCase(),
-    apellidos: String(body.apellidos ?? "").trim().toUpperCase(),
+
+    // compat (si los conservas en schema)
+    nombres: cleanUpper(nombresFinal),
+    apellidos: cleanUpper(apellidosFinal),
+
+    // ✅ nuevos (si ya los agregaste al schema)
+    primerNombre: cleanUpper(split.primerNombre),
+    segundoNombre: split.segundoNombre ? cleanUpper(split.segundoNombre) : null,
+    primerApellido: cleanUpper(split.primerApellido),
+    segundoApellido: split.segundoApellido ? cleanUpper(split.segundoApellido) : null,
 
     fechaNacimiento: coerceDate(body.fechaNacimiento ?? body.fecha_nac) ?? undefined,
     sexo: mapSexo(body.sexo) ?? undefined,
 
-    telefono: cleanString(body.telefono) as any,
-    celular: cleanString(body.celular) as any,
-    email: cleanString(body.email) as any,
+    telefono: cleanOpt(body.telefono) as any,
+    celular: cleanOpt(body.celular) as any,
+    email: lowerEmailOpt(body.email) as any,
 
-    direccion: cleanString(body.direccion) as any,
-    barrio: cleanString(body.barrio) as any,
-    ciudad: cleanString(body.ciudad) as any,
-    departamento: cleanString(body.departamento ?? body.dpto) as any,
+    direccion: cleanOpt(body.direccion) as any,
+    barrio: cleanOpt(body.barrio) as any,
+    ciudad: cleanOpt(body.ciudad) as any,
+    departamento: cleanOpt(body.departamento ?? body.dpto) as any,
     zona: mapZona(body.zona) ?? undefined,
 
-    eps: cleanString(body.eps).trim().toUpperCase() as any,
+    eps: cleanUpperOpt(body.eps) as any,
     rh: mapRH(body.rh) ?? undefined,
     discapacidad: mapDiscapacidad(body.discapacidad) ?? undefined,
-    discapacidadDetalle: cleanString(body.discapacidadDetalle) as any,
-    alergias: cleanString(body.alergias) as any,
-    medicamentos: cleanString(body.medicamentos) as any,
-    antecedentes: cleanString(body.antecedentes) as any,
+    discapacidadDetalle: cleanOpt(body.discapacidadDetalle) as any,
+    alergias: cleanOpt(body.alergias) as any,
+    medicamentos: cleanOpt(body.medicamentos) as any,
+    antecedentes: cleanOpt(body.antecedentes) as any,
 
-    comunidad: cleanString(body.comunidad) as any,
-    lengua: cleanString(body.lengua) as any,
-    practicasCulturales: cleanString(body.practicas ?? body.practicasCulturales) as any,
+    comunidad: cleanOpt(body.comunidad) as any,
+    lengua: cleanOpt(body.lengua) as any,
+    practicasCulturales: cleanOpt(body.practicas ?? body.practicasCulturales) as any,
 
-    urgenciaNombre: cleanString(body.urg_nombre ?? body.urgenciaNombre) as any,
-    urgenciaParentesco: cleanString(body.urg_parentesco ?? body.urgenciaParentesco) as any,
-    urgenciaTelefono: cleanString(body.urg_tel ?? body.urgenciaTelefono) as any,
-    urgenciaDireccion: cleanString(body.urg_dir ?? body.urgenciaDireccion) as any,
+    urgenciaNombre: cleanOpt(body.urg_nombre ?? body.urgenciaNombre) as any,
+    urgenciaParentesco: cleanOpt(body.urg_parentesco ?? body.urgenciaParentesco) as any,
+    urgenciaTelefono: cleanOpt(body.urg_tel ?? body.urgenciaTelefono) as any,
+    urgenciaDireccion: cleanOpt(body.urg_dir ?? body.urgenciaDireccion) as any,
 
-    acudientes: body.acudientes
-      ? (upperJsonStrings(body.acudientes) as Prisma.InputJsonValue)
-      : undefined,
+    acudientes:
+      typeof body.acudientes !== "undefined"
+        ? (deepTrimStrings(body.acudientes) as Prisma.InputJsonValue)
+        : undefined,
 
-    docs: body.docs
-      ? (upperJsonStrings(body.docs) as Prisma.InputJsonValue)
-      : (body.docsMeta ? (upperJsonStrings(body.docsMeta) as Prisma.InputJsonValue) : undefined),
+    docs:
+      typeof body.docs !== "undefined"
+        ? (deepTrimStrings(body.docs) as Prisma.InputJsonValue)
+        : typeof body.docsMeta !== "undefined"
+        ? (deepTrimStrings(body.docsMeta) as Prisma.InputJsonValue)
+        : undefined,
   };
 
   return data;
 }
 
-/** UPDATE: SOLO actualiza lo que venga (sin defaults) */
-function mapPayloadUpdate(body: any): Prisma.BeneficiarioUpdateInput {
-  const data: Prisma.BeneficiarioUpdateInput = {};
+/** UPDATE: solo actualiza lo que venga */
+function mapPayloadUpdate(body: any): Prisma.BeneficiarioUpdateInput & Record<string, any> {
+  const data: Prisma.BeneficiarioUpdateInput & Record<string, any> = {};
 
-  if (typeof body.tipoDoc !== "undefined" || typeof body.tipo_doc !== "undefined") {
-    data.tipoDoc = (body.tipoDoc ?? body.tipo_doc) as TipoDocumento;
+  // tipo/doc
+  if ("tipoDoc" in body || "tipo_doc" in body) {
+    data.tipoDoc = tipoDocFrom(body);
   }
-  if (typeof body.nombres !== "undefined") data.nombres = cleanString(body.nombres) as any;
-  if (typeof body.apellidos !== "undefined") data.apellidos = cleanString(body.apellidos) as any;
 
-  if (typeof body.fechaNacimiento !== "undefined" || typeof body.fecha_nac !== "undefined") {
+  if ("doc" in body || "num_doc" in body) {
+    const d = cleanOpt(body.doc ?? body.num_doc);
+    if (typeof d === "string") data.doc = d.toUpperCase() as any;
+    if (d === null) data.doc = null as any;
+  }
+
+  // ✅ nombres separados / compat
+  const splitTouched =
+    "primerNombre" in body ||
+    "primer_nombre" in body ||
+    "segundoNombre" in body ||
+    "segundo_nombre" in body ||
+    "primerApellido" in body ||
+    "primer_apellido" in body ||
+    "segundoApellido" in body ||
+    "segundo_apellido" in body;
+
+  if (splitTouched) {
+    const pn = cleanOpt(body.primerNombre ?? body.primer_nombre);
+    const sn = cleanOpt(body.segundoNombre ?? body.segundo_nombre);
+    const pa = cleanOpt(body.primerApellido ?? body.primer_apellido);
+    const sa = cleanOpt(body.segundoApellido ?? body.segundo_apellido);
+
+    if (typeof pn !== "undefined") data.primerNombre = pn ? pn.toUpperCase() : null;
+    if (typeof sn !== "undefined") data.segundoNombre = sn ? sn.toUpperCase() : null;
+    if (typeof pa !== "undefined") data.primerApellido = pa ? pa.toUpperCase() : null;
+    if (typeof sa !== "undefined") data.segundoApellido = sa ? sa.toUpperCase() : null;
+
+    // opcional: también mantener compat
+    if ("nombres" in body) data.nombres = cleanUpperOpt(body.nombres) as any;
+    if ("apellidos" in body) data.apellidos = cleanUpperOpt(body.apellidos) as any;
+  } else {
+    // si vienen nombres/apellidos, los partimos
+    if ("nombres" in body) {
+      const v = cleanOpt(body.nombres);
+      if (typeof v !== "undefined") {
+        const { a, b } = split2(v);
+        data.primerNombre = a ? a.toUpperCase() : null;
+        data.segundoNombre = b ? b.toUpperCase() : null;
+        data.nombres = v ? v.toUpperCase() : null;
+      }
+    }
+    if ("apellidos" in body) {
+      const v = cleanOpt(body.apellidos);
+      if (typeof v !== "undefined") {
+        const { a, b } = split2(v);
+        data.primerApellido = a ? a.toUpperCase() : null;
+        data.segundoApellido = b ? b.toUpperCase() : null;
+        data.apellidos = v ? v.toUpperCase() : null;
+      }
+    }
+  }
+
+  // fecha/enums
+  if ("fechaNacimiento" in body || "fecha_nac" in body) {
     data.fechaNacimiento = coerceDate(body.fechaNacimiento ?? body.fecha_nac) as any;
   }
-  if (typeof body.sexo !== "undefined") data.sexo = mapSexo(body.sexo) as any;
-  if (typeof body.zona !== "undefined") data.zona = mapZona(body.zona) as any;
-  if (typeof body.rh !== "undefined") data.rh = mapRH(body.rh) as any;
-  if (typeof body.discapacidad !== "undefined") data.discapacidad = mapDiscapacidad(body.discapacidad) as any;
+  if ("sexo" in body) data.sexo = mapSexo(body.sexo) as any;
+  if ("zona" in body) data.zona = mapZona(body.zona) as any;
+  if ("rh" in body) data.rh = mapRH(body.rh) as any;
+  if ("discapacidad" in body) data.discapacidad = mapDiscapacidad(body.discapacidad) as any;
 
-  const stringFields: Array<[string, any]> = [
-    ["telefono", body.telefono],
-    ["celular", body.celular],
-    ["email", body.email],
-    ["direccion", body.direccion],
-    ["barrio", body.barrio],
-    ["ciudad", body.ciudad],
-    ["departamento", body.departamento ?? body.dpto],
-    ["eps", body.eps],
-    ["discapacidadDetalle", body.discapacidadDetalle],
-    ["alergias", body.alergias],
-    ["medicamentos", body.medicamentos],
-    ["antecedentes", body.antecedentes],
-    ["comunidad", body.comunidad],
-    ["lengua", body.lengua],
-    ["practicasCulturales", body.practicas ?? body.practicasCulturales],
-    ["urgenciaNombre", body.urg_nombre ?? body.urgenciaNombre],
-    ["urgenciaParentesco", body.urg_parentesco ?? body.urgenciaParentesco],
-    ["urgenciaTelefono", body.urg_tel ?? body.urgenciaTelefono],
-    ["urgenciaDireccion", body.urg_dir ?? body.urgenciaDireccion],
+  // strings
+  const stringFields: Array<[keyof Prisma.BeneficiarioUpdateInput, any, "upper" | "plain" | "email"]> = [
+    ["telefono", body.telefono, "plain"],
+    ["celular", body.celular, "plain"],
+    ["email", body.email, "email"],
+
+    ["direccion", body.direccion, "plain"],
+    ["barrio", body.barrio, "plain"],
+    ["ciudad", body.ciudad, "plain"],
+    ["departamento", body.departamento ?? body.dpto, "plain"],
+
+    ["eps", body.eps, "upper"],
+    ["discapacidadDetalle", body.discapacidadDetalle, "plain"],
+    ["alergias", body.alergias, "plain"],
+    ["medicamentos", body.medicamentos, "plain"],
+    ["antecedentes", body.antecedentes, "plain"],
+
+    ["comunidad", body.comunidad, "plain"],
+    ["lengua", body.lengua, "plain"],
+    ["practicasCulturales", body.practicas ?? body.practicasCulturales, "plain"],
+
+    ["urgenciaNombre", body.urg_nombre ?? body.urgenciaNombre, "plain"],
+    ["urgenciaParentesco", body.urg_parentesco ?? body.urgenciaParentesco, "plain"],
+    ["urgenciaTelefono", body.urg_tel ?? body.urgenciaTelefono, "plain"],
+    ["urgenciaDireccion", body.urg_dir ?? body.urgenciaDireccion, "plain"],
   ];
 
-  for (const [k, v] of stringFields) {
-    if (typeof v !== "undefined") (data as any)[k] = cleanString(v);
+  for (const [k, v, mode] of stringFields) {
+    if (typeof v === "undefined") continue;
+    if (mode === "email") (data as any)[k] = lowerEmailOpt(v);
+    else if (mode === "upper") (data as any)[k] = cleanUpperOpt(v);
+    else (data as any)[k] = cleanOpt(v);
   }
 
-  if (typeof body.acudientes !== "undefined")
-    data.acudientes = upperJsonStrings(body.acudientes) as Prisma.InputJsonValue;
-
-  if (typeof body.docs !== "undefined")
-    data.docs = upperJsonStrings(body.docs) as Prisma.InputJsonValue;
-
-  if (typeof body.docsMeta !== "undefined" && typeof body.docs === "undefined") {
-    data.docs = upperJsonStrings(body.docsMeta) as Prisma.InputJsonValue;
+  // JSON
+  if ("acudientes" in body) data.acudientes = deepTrimStrings(body.acudientes) as Prisma.InputJsonValue;
+  if ("docs" in body) data.docs = deepTrimStrings(body.docs) as Prisma.InputJsonValue;
+  if ("docsMeta" in body && !("docs" in body)) {
+    data.docs = deepTrimStrings(body.docsMeta) as Prisma.InputJsonValue;
   }
+
   return data;
 }
 
-/* ==== GET: lista con filtros básicos ==== */
-export async function GET(req: Request) {
+/* ================= GET (lista) ================= */
+export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const q = (searchParams.get("q") ?? "").trim();
 
-  const takeRaw = Number(searchParams.get("take") ?? 50);
-  const skipRaw = Number(searchParams.get("skip") ?? 0);
-  const take = Number.isFinite(takeRaw) ? Math.min(Math.max(takeRaw, 1), 200) : 50;
-  const skip = Number.isFinite(skipRaw) ? Math.max(skipRaw, 0) : 0;
+  const q = clean(searchParams.get("q"));
+  const page = Math.max(1, Number(searchParams.get("page") ?? 1));
+  const pageSize = Math.max(1, Math.min(200, Number(searchParams.get("pageSize") ?? 50)));
+  const skip = (page - 1) * pageSize;
+
+  // compat take/skip antiguos
+  const takeRaw = Number(searchParams.get("take"));
+  const skipRaw = Number(searchParams.get("skip"));
+  const take = Number.isFinite(takeRaw) ? Math.min(Math.max(takeRaw, 1), 200) : pageSize;
+  const skip2 = Number.isFinite(skipRaw) ? Math.max(skipRaw, 0) : skip;
 
   const where: Prisma.BeneficiarioWhereInput = q
     ? {
         OR: [
           { doc: { contains: q, mode: "insensitive" } },
+
+          // compat (campos antiguos)
           { nombres: { contains: q, mode: "insensitive" } },
           { apellidos: { contains: q, mode: "insensitive" } },
+
+          // ✅ nuevos
+          { primerNombre: { contains: q, mode: "insensitive" } },
+          { segundoNombre: { contains: q, mode: "insensitive" } },
+          { primerApellido: { contains: q, mode: "insensitive" } },
+          { segundoApellido: { contains: q, mode: "insensitive" } },
+
           { ciudad: { contains: q, mode: "insensitive" } },
+          { email: { contains: q, mode: "insensitive" } },
         ],
       }
     : {};
 
   const [items, total] = await Promise.all([
-    prisma.beneficiario.findMany({ where, orderBy: { createdAt: "desc" }, take, skip }),
+    prisma.beneficiario.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take,
+      skip: skip2,
+    }),
     prisma.beneficiario.count({ where }),
   ]);
 
-  return NextResponse.json({ items, total });
+  return NextResponse.json(
+    { items, total, page, pageSize },
+    { headers: { "cache-control": "no-store" } }
+  );
 }
 
-/* ==== POST: crear beneficiario ==== */
-export async function POST(req: Request) {
+/* ================= POST (crear) ================= */
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    // ✅ blindaje: aunque llegue id/createdAt/updatedAt desde el front, se ignoran en CREATE
+    // blindaje: ignora cosas que no deben venir en CREATE
     if (body && typeof body === "object") {
       delete body.id;
       delete body.createdAt;
@@ -250,12 +467,19 @@ export async function POST(req: Request) {
 
     const data = mapPayloadCreate(body);
 
-    if (!data.doc || String(data.doc).trim() === "") {
+    if (!data.doc || !String(data.doc).trim()) {
       return NextResponse.json({ error: "El documento no puede estar vacío." }, { status: 400 });
+    }
+    // mínimo: primer nombre y primer apellido
+    if (!data.primerNombre || !data.primerApellido) {
+      return NextResponse.json(
+        { error: "Faltan nombres: primerNombre/primerApellido (o envía nombres/apellidos)." },
+        { status: 400 }
+      );
     }
 
     const created = await prisma.beneficiario.create({ data });
-    return NextResponse.json(created, { status: 201 });
+    return NextResponse.json(created, { status: 201, headers: { "cache-control": "no-store" } });
   } catch (e: any) {
     if (e?.code === "P2002") {
       return NextResponse.json({ error: "Ya existe un beneficiario con ese documento." }, { status: 409 });
@@ -265,13 +489,14 @@ export async function POST(req: Request) {
   }
 }
 
-/* ==== PUT: actualizar beneficiario (por id INT o por doc) ==== */
-export async function PUT(req: Request) {
+/* ================= PUT (actualizar por id o doc) ================= */
+export async function PUT(req: NextRequest) {
   try {
     const body = await req.json();
 
     const id = toIntId(body.id);
-    const docWhere = (body.doc ?? body.num_doc) as string | undefined;
+    const docWhereRaw = body.doc ?? body.num_doc;
+    const docWhere = docWhereRaw ? clean(docWhereRaw).toUpperCase() : "";
 
     if (!id && !docWhere) {
       return NextResponse.json(
@@ -282,24 +507,34 @@ export async function PUT(req: Request) {
 
     const data = mapPayloadUpdate(body);
 
+    // soporte doc nuevo
     if (id && (body.docNuevo || body.num_doc_nuevo)) {
-      (data as any).doc = String(body.docNuevo ?? body.num_doc_nuevo).trim();
+      const newDoc = clean(body.docNuevo ?? body.num_doc_nuevo).toUpperCase();
+      if (newDoc) data.doc = newDoc as any;
     }
 
     const updated = await prisma.beneficiario.update({
-      where: id ? { id } : { doc: String(docWhere) },
+      where: id ? { id } : { doc: docWhere },
       data,
       select: {
         id: true,
         tipoDoc: true,
         doc: true,
+
+        // compat + nuevos
         nombres: true,
         apellidos: true,
+        primerNombre: true,
+        segundoNombre: true,
+        primerApellido: true,
+        segundoApellido: true,
+
+        email: true,
         updatedAt: true,
       },
     });
 
-    return NextResponse.json(updated, { status: 200 });
+    return NextResponse.json(updated, { status: 200, headers: { "cache-control": "no-store" } });
   } catch (e: any) {
     if (e?.code === "P2025") {
       return NextResponse.json({ error: "Beneficiario no encontrado." }, { status: 404 });

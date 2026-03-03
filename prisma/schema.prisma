@@ -207,18 +207,25 @@ enum DiscapacidadTipo {
 model User {
   id        Int      @id @default(autoincrement())
 
-  usuario   String   @unique // ✅ nuevo: username para login
-
+  usuario   String   @unique // username para login
   email     String   @unique
   password  String
+
+  // ✅ compatibilidad (nombre completo)
   nombre    String?
+
+  // ✅ nuevos (nombre separado)
+  primerNombre    String? @db.VarChar(60)
+  segundoNombre   String? @db.VarChar(60)
+  primerApellido  String? @db.VarChar(60)
+  segundoApellido String? @db.VarChar(60)
+
   activo    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   roles         UserRole[]
   pqrsAsignados PQRS[] @relation("PQRSResponsable")
-
   entregasResponsable Entrega[] @relation("EntregaResponsable")
 }
 
@@ -244,8 +251,18 @@ model Beneficiario {
 
   tipoDoc         TipoDocumento @default(CC)
   doc             String        @unique
+
+  // ✅ Nuevos campos (separados)
+  primerNombre    String?
+  segundoNombre   String?
+  primerApellido  String?
+  segundoApellido String?
+
+  // ✅ Compatibilidad (full name)
+  // Puedes seguir usándolos, o irlos eliminando luego con migración futura.
   nombres         String
   apellidos       String
+
   fechaNacimiento DateTime?
   sexo            Sexo?
 
@@ -302,6 +319,7 @@ model Beneficiario {
   pqrs     PQRS[]
 
   @@index([tipoDoc, doc])
+  @@index([primerNombre, primerApellido])
   @@index([nombres, apellidos])
   @@index([departamento, ciudad, barrio])
 }

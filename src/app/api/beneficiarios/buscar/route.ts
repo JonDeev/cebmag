@@ -1,22 +1,71 @@
+// src/app/api/beneficiarios/buscar/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { TipoDocumento, GrupoRH } from "@prisma/client";
 
-// Mapea enums/valores de BD → etiquetas usadas en la UI
-const mapSexo = (s?: string | null) =>
-  s === "FEMENINO"
-    ? "Femenino"
-    : s === "MASCULINO"
-    ? "Masculino"
-    : s
-    ? "Otro / Prefiere no decir"
-    : "";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-const mapZona = (z?: string | null) => (z === "URBANA" ? "Urbana" : z === "RURAL" ? "Rural" : "");
+const NO_STORE_HEADERS = {
+  "cache-control": "no-store, no-cache, max-age=0",
+  pragma: "no-cache",
+};
+
+function clean(v: any) {
+  return String(v ?? "").trim();
+}
+
+function normKey(v: any) {
+  return clean(v)
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+const toYMD = (d?: Date | null) => (d ? d.toISOString().slice(0, 10) : "");
+
+function isTipoDocumento(t: string): t is TipoDocumento {
+  return (Object.values(TipoDocumento) as string[]).includes(t);
+}
+
+function joinParts(...parts: Array<string | null | undefined>) {
+  return parts
+    .map((x) => String(x ?? "").trim())
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+}
+
+// fallback: si aún no tienes columnas separadas, se derivan desde nombres/apellidos
+function split2(full: string) {
+  const parts = clean(full).split(/\s+/).filter(Boolean);
+  return {
+    first: parts[0] ?? "",
+    second: parts.slice(1).join(" ").trim(),
+  };
+}
+
+/* ================= Mappers UI ================= */
+const mapSexo = (s?: string | null) => {
+  const k = normKey(s);
+  if (!k) return "";
+  if (k === "FEMENINO") return "Femenino";
+  if (k === "MASCULINO") return "Masculino";
+  return "Otro / Prefiere no decir";
+};
+
+const mapZona = (z?: string | null) => {
+  const k = normKey(z);
+  if (!k) return "Urbana";
+  if (k === "URBANA") return "Urbana";
+  if (k === "RURAL") return "Rural";
+  return String(z ?? "");
+};
 
 const mapDiscapacidad = (d?: string | null) => {
-  if (!d || d === "NINGUNA") return "";
-  return d.charAt(0) + d.slice(1).toLowerCase(); // VISUAL → Visual
+  const k = normKey(d);
+  if (!k || k === "NINGUNA") return "";
+  return k.charAt(0) + k.slice(1).toLowerCase();
 };
 
 const mapRH = (rh?: GrupoRH | null) => {
@@ -34,41 +83,110 @@ const mapRH = (rh?: GrupoRH | null) => {
   return map[String(rh)] ?? String(rh);
 };
 
-const toYMD = (d?: Date | null) => (d ? d.toISOString().slice(0, 10) : "");
-
-const isTipoDocumento = (t: string): t is TipoDocumento =>
-  ["CC", "TI", "CE", "RC", "PA", "PEP", "PPT", "NIT", "OTRO"].includes(t);
+async function withTimeout<T>(p: Promise<T>, ms = 8000): Promise<T> {
+  return await Promise.race([
+    p,
+    new Promise<T>((_, rej) =>
+      setTimeout(() => rej(new Error("Timeout consultando la base de datos")), ms)
+    ),
+  ]);
+}
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const tipoRaw = (searchParams.get("tipo") ?? "").trim();
-    const doc = (searchParams.get("doc") ?? "").trim().toUpperCase();
 
-    if (!tipoRaw || !doc) {
-      return NextResponse.json({ error: "Faltan parámetros tipo y doc" }, { status: 400 });
+    const tipo = normKey(searchParams.get("tipo"));
+    const doc = clean(searchParams.get("doc")).toUpperCase();
+
+    if (!tipo || !doc) {
+      return NextResponse.json(
+        { error: "Faltan parámetros tipo y doc" },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
     }
 
-    if (!isTipoDocumento(tipoRaw)) {
-      return NextResponse.json({ error: "Tipo de documento inválido" }, { status: 400 });
+    if (!isTipoDocumento(tipo)) {
+      return NextResponse.json(
+        { error: "Tipo de documento inválido" },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
     }
 
-    const benef = await prisma.beneficiario.findFirst({
-      where: { tipoDoc: tipoRaw, doc },
-    });
+    // ✅ CLAVE: select solo columnas que existen hoy en tu BD
+    const benef = await withTimeout(
+      prisma.beneficiario.findFirst({
+        where: { tipoDoc: tipo as TipoDocumento, doc },
+        select: {
+          id: true,
+          tipoDoc: true,
+          doc: true,
+          fechaNacimiento: true,
 
-    if (!benef) return NextResponse.json(null, { status: 200 });
+          nombres: true,
+          apellidos: true,
 
-    // Payload con nombres EXACTOS de la UI (+ id numérico)
+          sexo: true,
+          direccion: true,
+          barrio: true,
+          ciudad: true,
+          departamento: true,
+          zona: true,
+
+          telefono: true,
+          celular: true,
+          email: true,
+
+          eps: true,
+          rh: true,
+          discapacidad: true,
+          alergias: true,
+          medicamentos: true,
+          antecedentes: true,
+
+          comunidad: true,
+          lengua: true,
+          practicasCulturales: true,
+
+          urgenciaNombre: true,
+          urgenciaParentesco: true,
+          urgenciaTelefono: true,
+          urgenciaDireccion: true,
+
+          acudientes: true,
+          docs: true,
+        },
+      }),
+      8000
+    );
+
+    if (!benef) {
+      return NextResponse.json(null, { status: 200, headers: NO_STORE_HEADERS });
+    }
+
+    // ✅ si aún no existen columnas separadas, las derivamos
+    const nom = split2(benef.nombres ?? "");
+    const ape = split2(benef.apellidos ?? "");
+
+    const acudientes = Array.isArray(benef.acudientes as any) ? (benef.acudientes as any) : [];
+    const docs = Array.isArray(benef.docs as any) ? (benef.docs as any) : [];
+
     const payload = {
-      id: benef.id, // ✅ AHORA ES Int
-
+      id: benef.id,
       tipo_doc: benef.tipoDoc,
       num_doc: benef.doc,
       fecha_nac: toYMD(benef.fechaNacimiento),
 
-      nombres: benef.nombres ?? "",
-      apellidos: benef.apellidos ?? "",
+      // ✅ NUEVO (para tu UI actual)
+      primer_nombre: nom.first,
+      segundo_nombre: nom.second,
+      primer_apellido: ape.first,
+      segundo_apellido: ape.second,
+
+      // ✅ COMPAT (por si alguna pantalla aún lo usa)
+      nombres: joinParts(nom.first, nom.second) || "",
+      apellidos: joinParts(ape.first, ape.second) || "",
+
       sexo: mapSexo(benef.sexo as any),
 
       direccion: benef.direccion ?? "",
@@ -98,15 +216,17 @@ export async function GET(req: NextRequest) {
       urg_tel: benef.urgenciaTelefono ?? "",
       urg_dir: benef.urgenciaDireccion ?? "",
 
-      acudientes: Array.isArray(benef.acudientes) ? (benef.acudientes as any) : [],
-
-      // opcional (si quieres que el front lo muestre al buscar):
-      docs: Array.isArray(benef.docs) ? (benef.docs as any) : [],
+      acudientes,
+      docs,
     };
 
-    return NextResponse.json(payload, { status: 200 });
+    return NextResponse.json(payload, { status: 200, headers: NO_STORE_HEADERS });
   } catch (err: any) {
     console.error("GET /api/beneficiarios/buscar error:", err);
-    return NextResponse.json({ error: err?.message ?? "Error interno" }, { status: 500 });
+    const status = String(err?.message || "").toLowerCase().includes("timeout") ? 504 : 500;
+    return NextResponse.json(
+      { error: err?.message ?? "Error interno" },
+      { status, headers: NO_STORE_HEADERS }
+    );
   }
 }

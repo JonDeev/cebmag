@@ -19,50 +19,67 @@ function clean(s: any) {
 function lowerEmail(s: any) {
   return clean(s).toLowerCase();
 }
-function toBoolActivo(estado: any) {
-  const v = clean(estado).toLowerCase();
-  if (!v) return undefined;
-  return v === "activo" || v === "true" || v === "1" || v === "si";
-}
-function toInt(v: any) {
-  const n = typeof v === "number" ? v : Number(String(v ?? "").trim());
-  return Number.isFinite(n) ? n : null;
-}
-function pickRolName(val: any) {
-  const r = clean(val);
-  return r || undefined;
+function toBoolActivo(v: any): boolean | undefined {
+  if (typeof v === "boolean") return v;
+  const s = clean(v).toLowerCase();
+  if (!s) return undefined;
+  return s === "activo" || s === "true" || s === "1" || s === "si";
 }
 
-async function ensureRoleTx(tx: any, name: string) {
-  const role = await tx.role.upsert({
-    where: { name },
-    update: {},
-    create: { name },
-    select: { id: true, name: true },
-  });
-  return role;
+function buildFullName(parts: {
+  primerNombre?: any;
+  segundoNombre?: any;
+  primerApellido?: any;
+  segundoApellido?: any;
+}) {
+  const p1 = clean(parts.primerNombre);
+  const p2 = clean(parts.segundoNombre);
+  const a1 = clean(parts.primerApellido);
+  const a2 = clean(parts.segundoApellido);
+  const full = [p1, p2, a1, a2].filter(Boolean).join(" ").trim();
+  return full || null;
+}
+
+function pickRoleIdFromBody(body: any): number | null {
+  const arr = Array.isArray(body?.roleIds) ? body.roleIds : null;
+  if (arr && arr.length) {
+    const id = Number(arr[0]);
+    return Number.isFinite(id) && id > 0 ? id : null;
+  }
+  const single = body?.roleId;
+  if (single !== undefined && single !== null && String(single).trim() !== "") {
+    const id = Number(single);
+    return Number.isFinite(id) && id > 0 ? id : null;
+  }
+  return null;
 }
 
 function toUi(u: any) {
-  const roles = (u?.roles ?? [])
-    .map((ur: any) => ur?.role)
-    .filter(Boolean)
-    .map((r: any) => ({ id: r.id, name: r.name }));
-
-  const roleName = roles?.[0]?.name ?? "Consulta";
+  const roles = Array.isArray(u?.roles)
+    ? u.roles
+        .map((ur: any) => ur?.role)
+        .filter(Boolean)
+        .map((r: any) => ({ id: r.id, name: r.name }))
+    : [];
 
   return {
     id: u.id,
-    usuario: u.usuario ?? "",      // ✅ para tu UI
-    nombre: u.nombre ?? "",
+    usuario: u.usuario ?? "",
     email: u.email ?? "",
-    activo: !!u.activo,            // ✅ boolean para tu UI
-    roles,                         // ✅ array para tu UI
+    nombre: u.nombre ?? "",
 
-    // compat/legacy por si alguna pantalla lo usa
-    rol: roleName,
+    primerNombre: u.primerNombre ?? null,
+    segundoNombre: u.segundoNombre ?? null,
+    primerApellido: u.primerApellido ?? null,
+    segundoApellido: u.segundoApellido ?? null,
+
+    activo: !!u.activo,
+
+    // compatibilidad vieja
     estado: u.activo ? "Activo" : "Inactivo",
+    rol: roles?.[0]?.name ?? "Consulta",
 
+    roles,
     createdAt: u.createdAt,
     updatedAt: u.updatedAt,
   };
@@ -82,9 +99,10 @@ export async function GET(_req: NextRequest, ctx: { params: any }) {
 }
 
 // PATCH /api/usuarios/:id
-// ✅ Soporta:
-// - moderno: { usuario?, nombre?, email?, activo?, roleIds?: number[], password? }
-// - legacy:  { rol?, estado? }
+// body soportado:
+// - { usuario?, email?, activo?, estado?, password?,
+//     nombre?, primerNombre?, segundoNombre?, primerApellido?, segundoApellido?,
+//     roleIds?, roleId?, rol? }
 export async function PATCH(req: NextRequest, ctx: { params: any }) {
   try {
     const id = await getId(ctx);
@@ -94,81 +112,88 @@ export async function PATCH(req: NextRequest, ctx: { params: any }) {
 
     const dataUser: any = {};
 
-    // ✅ usuario (moderno)
-    if ("usuario" in body) {
-      const usuario = clean(body.usuario);
-      if (!usuario) return NextResponse.json({ error: "Usuario requerido" }, { status: 400 });
-      if (usuario.length < 3) return NextResponse.json({ error: "Usuario mínimo 3 caracteres" }, { status: 400 });
-      dataUser.usuario = usuario;
-    }
+    // ✅ básicos
+    if ("usuario" in body) dataUser.usuario = clean(body.usuario);
+    if ("email" in body) dataUser.email = lowerEmail(body.email);
 
-    // nombre
-    if ("nombre" in body) dataUser.nombre = clean(body.nombre) || null;
-
-    // ✅ email editable
-    if ("email" in body) {
-      const email = lowerEmail(body.email);
-      if (!email) return NextResponse.json({ error: "Email requerido" }, { status: 400 });
-      dataUser.email = email;
-    }
-
-    // ✅ activo (moderno) o estado (legacy)
-    if ("activo" in body) {
-      dataUser.activo = !!body.activo;
-    } else if ("estado" in body) {
-      const activo = toBoolActivo(body.estado);
+    if ("activo" in body || "estado" in body) {
+      const activo = toBoolActivo(body.activo ?? body.estado);
       if (typeof activo === "boolean") dataUser.activo = activo;
     }
 
-    // password opcional
     if ("password" in body && clean(body.password)) {
       dataUser.password = await bcrypt.hash(clean(body.password), 10);
     }
 
-    // roles: roleIds (moderno) o rol (legacy)
-    let roleIds: number[] | null = null;
+    // ✅ nombres separados
+    if ("primerNombre" in body) dataUser.primerNombre = clean(body.primerNombre) || null;
+    if ("segundoNombre" in body) dataUser.segundoNombre = clean(body.segundoNombre) || null;
+    if ("primerApellido" in body) dataUser.primerApellido = clean(body.primerApellido) || null;
+    if ("segundoApellido" in body) dataUser.segundoApellido = clean(body.segundoApellido) || null;
 
-    if (Array.isArray(body.roleIds)) {
-      const ids = body.roleIds.map(toInt).filter(Boolean) as number[];
-      roleIds = ids;
-    } else {
-      const rolName = pickRolName(body.rol);
-      if (rolName) roleIds = null; // lo resolvemos dentro del tx como 1 rol
+    const touchingNameParts =
+      "primerNombre" in body ||
+      "segundoNombre" in body ||
+      "primerApellido" in body ||
+      "segundoApellido" in body;
+
+    // ✅ si mandan nombre explícito, lo respetamos. Si no, recalculamos si tocaron partes.
+    if ("nombre" in body) {
+      dataUser.nombre = clean(body.nombre) || null;
+    } else if (touchingNameParts) {
+      const current = await prisma.user.findUnique({
+        where: { id },
+        select: { primerNombre: true, segundoNombre: true, primerApellido: true, segundoApellido: true },
+      });
+
+      const merged = {
+        primerNombre: ("primerNombre" in body ? dataUser.primerNombre : current?.primerNombre) ?? null,
+        segundoNombre: ("segundoNombre" in body ? dataUser.segundoNombre : current?.segundoNombre) ?? null,
+        primerApellido: ("primerApellido" in body ? dataUser.primerApellido : current?.primerApellido) ?? null,
+        segundoApellido: ("segundoApellido" in body ? dataUser.segundoApellido : current?.segundoApellido) ?? null,
+      };
+
+      dataUser.nombre = buildFullName(merged);
     }
 
-    const rolNameLegacy = pickRolName(body.rol);
+    // ✅ rol (por id o por nombre)
+    const roleIdFromBody = pickRoleIdFromBody(body);
+    const rolName = clean(body.rol);
 
     const updated = await prisma.$transaction(async (tx) => {
-      // 1) actualizar usuario si hay data
-      if (Object.keys(dataUser).length > 0) {
-        await tx.user.update({
-          where: { id },
-          data: dataUser,
-        });
-      }
+      // 1) update usuario
+      await tx.user.update({
+        where: { id },
+        data: dataUser,
+      });
 
-      // 2) roles (si vienen)
-      if (Array.isArray(body.roleIds)) {
-        await tx.userRole.deleteMany({ where: { userId: id } });
-        if ((roleIds || []).length) {
-          await tx.userRole.createMany({
-            data: (roleIds || []).map((rid) => ({ userId: id, roleId: rid })),
-            skipDuplicates: true,
+      // 2) si vienen roles, dejamos SOLO 1 rol (el primero)
+      if (roleIdFromBody || rolName) {
+        let roleIdToUse: number;
+
+        if (roleIdFromBody) {
+          roleIdToUse = roleIdFromBody;
+        } else {
+          const role = await tx.role.upsert({
+            where: { name: rolName || "Consulta" },
+            update: {},
+            create: { name: rolName || "Consulta" },
+            select: { id: true },
           });
+          roleIdToUse = role.id;
         }
-      } else if (rolNameLegacy) {
-        const role = await ensureRoleTx(tx, rolNameLegacy);
+
         await tx.userRole.deleteMany({ where: { userId: id } });
-        await tx.userRole.create({ data: { userId: id, roleId: role.id } });
+        await tx.userRole.create({ data: { userId: id, roleId: roleIdToUse } });
       }
 
+      // 3) devolver usuario final
       const u2 = await tx.user.findUnique({
         where: { id },
         include: { roles: { include: { role: true } } },
       });
 
-      if (!u2) throw new Error("No encontrado");
-      return u2;
+      return u2!;
     });
 
     return NextResponse.json(toUi(updated), { headers: { "cache-control": "no-store" } });
@@ -176,14 +201,17 @@ export async function PATCH(req: NextRequest, ctx: { params: any }) {
     console.error("PATCH /api/usuarios/[id] error:", e);
 
     if (e?.code === "P2002") {
-      // puede ser email o usuario duplicado
-      return NextResponse.json({ error: "Ya existe un usuario con ese email o usuario." }, { status: 409 });
+      const target = Array.isArray(e?.meta?.target) ? e.meta.target.join(", ") : "";
+      if (String(target).includes("usuario")) {
+        return NextResponse.json({ error: "Ese usuario ya existe." }, { status: 409 });
+      }
+      if (String(target).includes("email")) {
+        return NextResponse.json({ error: "Ese email ya existe." }, { status: 409 });
+      }
+      return NextResponse.json({ error: "Ya existe un registro con ese dato único." }, { status: 409 });
     }
 
-    return NextResponse.json(
-      { error: e?.message ?? "Error actualizando usuario" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: e?.message ?? "Error actualizando usuario" }, { status: 400 });
   }
 }
 
@@ -192,10 +220,14 @@ export async function DELETE(_req: NextRequest, ctx: { params: any }) {
     const id = await getId(ctx);
     if (!id) return NextResponse.json({ error: "ID inválido" }, { status: 400 });
 
-    await prisma.user.delete({ where: { id } });
+    await prisma.$transaction(async (tx) => {
+      await tx.userRole.deleteMany({ where: { userId: id } });
+      await tx.user.delete({ where: { id } });
+    });
+
     return NextResponse.json({ ok: true }, { headers: { "cache-control": "no-store" } });
   } catch (e: any) {
     console.error("DELETE /api/usuarios/[id] error:", e);
-    return NextResponse.json({ error: e?.message ?? "Error eliminando usuario" }, { status: 500 });
+    return NextResponse.json({ error: e?.message ?? "Error eliminando usuario" }, { status: 400 });
   }
 }
