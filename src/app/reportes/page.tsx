@@ -16,6 +16,7 @@ import {
   Package,
   Wallet,
   ClipboardList,
+  Users,
 } from "lucide-react";
 
 /* ================= UI helpers ================= */
@@ -138,12 +139,6 @@ const daysAgo = (n: number) => {
   return d.toISOString().slice(0, 10);
 };
 
-function toYMD(v: any) {
-  if (!v) return "";
-  const s = String(v);
-  return s.length >= 10 ? s.slice(0, 10) : s;
-}
-
 async function readJsonOrText(res: Response) {
   const raw = await res.text();
   try {
@@ -158,9 +153,7 @@ function errMsg(data: any, fallback: string) {
 
 function exportCSV(filename: string, headers: string[], rows: Record<string, any>[]) {
   const lines = rows.map((r) =>
-    headers
-      .map((h) => `"${String(r[h] ?? "").replace(/"/g, '""')}"`)
-      .join(",")
+    headers.map((h) => `"${String(r[h] ?? "").replace(/"/g, '""')}"`).join(",")
   );
   const csv = [headers.join(","), ...lines].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -216,8 +209,32 @@ function printTable(title: string, headers: string[], rows: Record<string, any>[
   w.document.close();
 }
 
+async function downloadExcel(url: string, filename: string) {
+  const t = toast.loading("Generando Excel...");
+  try {
+    const res = await fetch(url, { method: "GET" });
+    const body = res.ok ? null : await readJsonOrText(res).catch(() => null);
+    if (!res.ok) throw new Error(errMsg(body, "No se pudo descargar el Excel"));
+
+    const blob = await res.blob();
+    const fileUrl = window.URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = fileUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    window.URL.revokeObjectURL(fileUrl);
+    toast.success("Excel descargado ✅", { id: t });
+  } catch (e: any) {
+    toast.error(e?.message ?? "Error descargando Excel", { id: t });
+  }
+}
+
 /* ================= Report definitions ================= */
-type ReportKey = "costos" | "entregas" | "pqrs" | "inscripciones";
+type ReportKey = "costos" | "entregas" | "pqrs" | "inscripciones" | "beneficiarios";
 
 const REPORTS: Array<{
   key: ReportKey;
@@ -226,6 +243,32 @@ const REPORTS: Array<{
   icon: React.ReactNode;
   headers: string[];
 }> = [
+  {
+    key: "beneficiarios",
+    label: "Beneficiarios",
+    desc: "Beneficiarios con nombres separados + edad calculada (REAL).",
+    icon: <Users size={16} />,
+    headers: [
+      "tipoDoc",
+      "doc",
+      "primerNombre",
+      "segundoNombre",
+      "primerApellido",
+      "segundoApellido",
+      "fechaNacimiento",
+      "edad",
+      "sexo",
+      "celular",
+      "telefono",
+      "email",
+      "eps",
+      "rh",
+      "ciudad",
+      "departamento",
+      "activo",
+      "createdAt",
+    ],
+  },
   {
     key: "costos",
     label: "Costos y gastos",
@@ -238,7 +281,7 @@ const REPORTS: Array<{
     label: "Entregas de insumos/kits",
     desc: "Listado de entregas por beneficiario, estado y responsable (REAL).",
     icon: <Package size={16} />,
-    headers: ["comprobante", "fecha", "doc", "beneficiario", "responsable", "estado", "kit", "items", "obs"],
+    headers: ["comprobante", "fecha", "doc", "beneficiario", "responsable", "estado", "kit", "items", "productos", "obs"]
   },
   {
     key: "pqrs",
@@ -252,301 +295,9 @@ const REPORTS: Array<{
     label: "Inscripciones",
     desc: "Inscripciones y contratos (REAL).",
     icon: <ClipboardList size={16} />,
-    headers: [
-      "radicado",
-      "fecha",
-      "tipo",
-      "candidato",
-      "doc",
-      "cargo",
-      "actividad",
-      "estado",
-      "puntaje",
-      "decision",
-      "modalidad",
-      "valor",
-      "inicio",
-      "fin",
-    ],
+    headers: ["radicado", "fecha", "tipo", "candidato", "doc", "cargo", "actividad", "estado", "puntaje", "decision", "modalidad", "valor", "inicio", "fin"],
   },
 ];
-
-/* ================= Backend calls ================= */
-type Act = { id: number; codigo: string; nombre: string };
-type Gasto = { fecha: any; actividadId: number; categoria: string; descripcion: string; valor: number };
-
-async function fetchCostosRows(filters: { d1: string; d2: string; q: string }) {
-  const rA = await fetch(`/api/costos/actividades?ts=${Date.now()}`, {
-    cache: "no-store",
-    headers: { "cache-control": "no-cache", pragma: "no-cache" },
-  });
-  const aBody = await readJsonOrText(rA);
-  if (!rA.ok) throw new Error(errMsg(aBody, `HTTP ${rA.status}`));
-  const acts = (Array.isArray(aBody?.items) ? aBody.items : Array.isArray(aBody) ? aBody : []) as Act[];
-  const actMap = new Map<number, string>();
-  acts.forEach((a) => actMap.set(a.id, `${a.codigo} • ${a.nombre}`));
-
-  const sp = new URLSearchParams();
-  if (filters.q) sp.set("q", filters.q);
-  if (filters.d1) sp.set("d1", filters.d1);
-  if (filters.d2) sp.set("d2", filters.d2);
-  sp.set("page", "1");
-  sp.set("pageSize", "500");
-  sp.set("ts", String(Date.now()));
-
-  const rG = await fetch(`/api/costos/gastos?${sp.toString()}`, {
-    cache: "no-store",
-    headers: { "cache-control": "no-cache", pragma: "no-cache" },
-  });
-  const gBody = await readJsonOrText(rG);
-  if (!rG.ok) throw new Error(errMsg(gBody, `HTTP ${rG.status}`));
-  const gastos = (Array.isArray(gBody?.items) ? gBody.items : Array.isArray(gBody) ? gBody : []) as Gasto[];
-
-  return gastos.map((g) => ({
-    fecha: toYMD(g.fecha),
-    actividad: actMap.get(Number(g.actividadId)) ?? `Actividad ${g.actividadId}`,
-    categoria: g.categoria,
-    descripcion: g.descripcion,
-    valor: Number(g.valor ?? 0),
-  }));
-}
-
-type EntregaApi = {
-  comprobante?: string;
-  fecha?: any;
-  responsable?: string;
-  estado?: string;
-  kit?: string | null;
-  items?: any;
-  observaciones?: string | null;
-  beneficiario?: any;
-};
-
-function normKey(v: any) {
-  return String(v ?? "")
-    .trim()
-    .toUpperCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
-function estadoEntregaToUi(v: any) {
-  const k = normKey(v);
-  if (k === "PENDIENTE") return "Pendiente";
-  if (k === "PARCIAL") return "Parcial";
-  if (k === "ENTREGADO" || k === "ENTREGADA") return "Entregado";
-  return String(v ?? "");
-}
-function beneficiarioNombre(b: any) {
-  if (!b) return "";
-  if (typeof b?.nombre === "string" && b.nombre.trim()) return b.nombre.trim();
-  const nom = `${b?.nombres ?? ""} ${b?.apellidos ?? ""}`.trim();
-  return nom || "";
-}
-function itemsCount(items: any) {
-  if (!items) return 0;
-  if (Array.isArray(items)) return items.length;
-  return 1;
-}
-async function fetchEntregasRows(filters: { d1: string; d2: string; q: string }) {
-  const sp = new URLSearchParams();
-  if (filters.q) sp.set("q", filters.q);
-  if (filters.d1) {
-    sp.set("d1", filters.d1);
-    sp.set("r1", filters.d1);
-  }
-  if (filters.d2) {
-    sp.set("d2", filters.d2);
-    sp.set("r2", filters.d2);
-  }
-  sp.set("page", "1");
-  sp.set("pageSize", "500");
-  sp.set("ts", String(Date.now()));
-
-  const res = await fetch(`/api/entregas?${sp.toString()}`, {
-    cache: "no-store",
-    headers: { "cache-control": "no-cache", pragma: "no-cache" },
-  });
-  const body = await readJsonOrText(res);
-  if (!res.ok) throw new Error(errMsg(body, `HTTP ${res.status}`));
-
-  const items = (Array.isArray(body?.items) ? body.items : Array.isArray(body) ? body : []) as EntregaApi[];
-
-  return items.map((r) => {
-    const ben = r.beneficiario ?? {};
-    const doc = String(ben?.doc ?? ben?.documento ?? "").trim();
-    return {
-      comprobante: String(r.comprobante ?? ""),
-      fecha: toYMD(r.fecha),
-      doc,
-      beneficiario: beneficiarioNombre(ben) || "—",
-      responsable: String(r.responsable ?? "—"),
-      estado: estadoEntregaToUi(r.estado),
-      kit: String(r.kit ?? ""),
-      items: String(itemsCount(r.items)),
-      obs: String((r.observaciones ?? "") || ""),
-    };
-  });
-}
-
-type PqrsApi = {
-  radicado?: string;
-  fecha?: any;
-  tipo?: string;
-  estado?: string;
-  origen?: string;
-  canal?: string;
-  solicitante?: any;
-  asunto?: string;
-  responsable?: string | null;
-  vencimiento?: any;
-};
-
-function pqrsStatusToUi(v: any) {
-  const k = normKey(v);
-  if (k === "ABIERTA") return "Abierta";
-  if (k === "EN_TRAMITE") return "En trámite";
-  if (k === "RE_ABIERTO" || k === "REABIERTO") return "Re Abierto";
-  if (k === "CERRADA") return "Cerrada";
-  return String(v ?? "");
-}
-function pqrsTipoToUi(v: any) {
-  const k = normKey(v);
-  if (k === "PETICION") return "Petición";
-  if (k === "QUEJA") return "Queja";
-  if (k === "RECLAMO") return "Reclamo";
-  if (k === "SUGERENCIA") return "Sugerencia";
-  return String(v ?? "");
-}
-function pqrsOrigenToUi(v: any) {
-  const k = normKey(v);
-  if (k === "BENEFICIARIO") return "Beneficiario";
-  if (k === "TERCERO") return "Tercero";
-  return String(v ?? "");
-}
-function pqrsCanalToUi(v: any) {
-  const k = normKey(v);
-  if (k === "WEB") return "Web";
-  if (k === "TELEFONO") return "Teléfono";
-  if (k === "PRESENCIAL") return "Presencial";
-  if (k === "EMAIL") return "Email";
-  return String(v ?? "");
-}
-function solicitanteLabel(s: any) {
-  if (!s || typeof s !== "object") return "";
-  const nombre =
-    String(s?.nombre ?? "").trim() ||
-    `${String(s?.nombres ?? "").trim()} ${String(s?.apellidos ?? "").trim()}`.trim();
-  const doc = String(s?.doc ?? s?.documento ?? "").trim();
-  return [nombre, doc ? `(${doc})` : ""].filter(Boolean).join(" ");
-}
-async function fetchPqrsRows(filters: { d1: string; d2: string; q: string }) {
-  const sp = new URLSearchParams();
-  if (filters.q) sp.set("q", filters.q);
-  if (filters.d1) sp.set("d1", filters.d1);
-  if (filters.d2) sp.set("d2", filters.d2);
-  sp.set("page", "1");
-  sp.set("pageSize", "500");
-  sp.set("ts", String(Date.now()));
-
-  const res = await fetch(`/api/pqrs?${sp.toString()}`, {
-    cache: "no-store",
-    headers: { "cache-control": "no-cache", pragma: "no-cache" },
-  });
-  const body = await readJsonOrText(res);
-  if (!res.ok) throw new Error(errMsg(body, `HTTP ${res.status}`));
-
-  const items = (Array.isArray(body?.items) ? body.items : Array.isArray(body) ? body : []) as PqrsApi[];
-
-  return items.map((r) => ({
-    radicado: String(r.radicado ?? ""),
-    fecha: toYMD(r.fecha),
-    tipo: pqrsTipoToUi(r.tipo),
-    estado: pqrsStatusToUi(r.estado),
-    origen: pqrsOrigenToUi(r.origen),
-    canal: pqrsCanalToUi(r.canal),
-    solicitante: solicitanteLabel(r.solicitante) || "—",
-    asunto: String(r.asunto ?? ""),
-    responsable: String(r.responsable ?? "—"),
-    vencimiento: r.vencimiento ? toYMD(r.vencimiento) : "",
-  }));
-}
-
-type InscripcionApi = {
-  radicado?: string;
-  fecha?: any;
-  tipo?: string;
-  candidato?: any;
-  cargo?: string;
-  actividad?: string;
-  estado?: string;
-  evaluacion?: any;
-  contrato?: any;
-};
-function candidatoNombre(c: any) {
-  if (!c || typeof c !== "object") return "";
-  const n = String(c?.nombres ?? "").trim();
-  const a = String(c?.apellidos ?? "").trim();
-  return `${n} ${a}`.trim();
-}
-async function fetchInscripcionesRows(filters: { d1: string; d2: string; q: string }) {
-  const sp = new URLSearchParams();
-  if (filters.q) sp.set("q", filters.q);
-  sp.set("page", "1");
-  sp.set("pageSize", "500");
-  sp.set("ts", String(Date.now()));
-
-  const res = await fetch(`/api/inscripciones?${sp.toString()}`, {
-    cache: "no-store",
-    headers: { "cache-control": "no-cache", pragma: "no-cache" },
-  });
-  const body = await readJsonOrText(res);
-  if (!res.ok) throw new Error(errMsg(body, `HTTP ${res.status}`));
-
-  const items = (Array.isArray(body?.items) ? body.items : Array.isArray(body) ? body : []) as InscripcionApi[];
-
-  const f1 = filters.d1 || "";
-  const f2 = filters.d2 || "";
-
-  const filtered = items.filter((r) => {
-    const f = toYMD(r.fecha);
-    const ok1 = !f1 || (f && f >= f1);
-    const ok2 = !f2 || (f && f <= f2);
-    return ok1 && ok2;
-  });
-
-  return filtered.map((r) => {
-    const cand = r.candidato ?? {};
-    const nombre = candidatoNombre(cand) || "—";
-    const doc = String(cand?.doc ?? "").trim();
-
-    const ev = r.evaluacion ?? {};
-    const puntaje = typeof ev?.puntaje === "number" ? ev.puntaje : "";
-    const decision = String(ev?.decision ?? "");
-
-    const c = r.contrato ?? null;
-    const modalidad = c ? String(c?.modalidad ?? "") : "";
-    const valor = c ? String(c?.valor ?? "") : "";
-    const inicio = c?.inicio ? toYMD(c.inicio) : "";
-    const fin = c?.fin ? toYMD(c.fin) : "";
-
-    return {
-      radicado: String(r.radicado ?? ""),
-      fecha: toYMD(r.fecha),
-      tipo: String(r.tipo ?? ""),
-      candidato: nombre,
-      doc,
-      cargo: String(r.cargo ?? ""),
-      actividad: String(r.actividad ?? ""),
-      estado: String(r.estado ?? ""),
-      puntaje,
-      decision,
-      modalidad,
-      valor,
-      inicio,
-      fin,
-    };
-  });
-}
 
 /* ================= Page ================= */
 export default function InformesPage() {
@@ -571,7 +322,7 @@ export default function InformesPage() {
       : 0;
 
     const groupKey =
-      report === "costos" ? "actividad" : report === "entregas" ? "estado" : report === "pqrs" ? "estado" : "actividad";
+      report === "costos" ? "actividad" : report === "entregas" ? "estado" : report === "pqrs" ? "estado" : report === "beneficiarios" ? "departamento" : "actividad";
     const unique = new Set(rows.map((r) => String(r[groupKey] ?? "").trim()).filter(Boolean)).size;
 
     return { total, sumValor, unique, groupKey };
@@ -581,22 +332,22 @@ export default function InformesPage() {
     setGenerated(true);
     setLoading(true);
     try {
-      if (report === "costos") {
-        setRows(await fetchCostosRows({ d1, d2, q }));
-        return;
-      }
-      if (report === "entregas") {
-        setRows(await fetchEntregasRows({ d1, d2, q }));
-        return;
-      }
-      if (report === "pqrs") {
-        setRows(await fetchPqrsRows({ d1, d2, q }));
-        return;
-      }
-      if (report === "inscripciones") {
-        setRows(await fetchInscripcionesRows({ d1, d2, q }));
-        return;
-      }
+      const sp = new URLSearchParams();
+      if (d1) sp.set("d1", d1);
+      if (d2) sp.set("d2", d2);
+      if (q.trim()) sp.set("q", q.trim());
+      sp.set("ts", String(Date.now()));
+
+      const res = await fetch(`/api/reportes/${report}?${sp.toString()}`, {
+        cache: "no-store",
+        headers: { "cache-control": "no-cache", pragma: "no-cache" },
+      });
+
+      const body = await readJsonOrText(res);
+      if (!res.ok) throw new Error(errMsg(body, `HTTP ${res.status}`));
+
+      const items = Array.isArray(body?.items) ? body.items : Array.isArray(body) ? body : [];
+      setRows(items);
     } catch (e: any) {
       toast.error(e?.message ?? "No se pudo generar el informe");
       setRows([]);
@@ -611,7 +362,18 @@ export default function InformesPage() {
     setLoading(false);
   };
 
-  const onExport = () => exportCSV(`informe_${report}_${today()}.csv`, def.headers, rows);
+  const onExportCSV = () => exportCSV(`informe_${report}_${today()}.csv`, def.headers, rows);
+
+  const onExportExcel = () => {
+    const sp = new URLSearchParams();
+    if (d1) sp.set("d1", d1);
+    if (d2) sp.set("d2", d2);
+    if (q.trim()) sp.set("q", q.trim());
+
+    const url = `/api/reportes/${report}/excel?${sp.toString()}`;
+    downloadExcel(url, `informe_${report}_${today()}.xlsx`);
+  };
+
   const onPrint = () => printTable(`Informe — ${def.label}`, def.headers, rows);
 
   return (
@@ -709,8 +471,11 @@ export default function InformesPage() {
             icon={<BarChart3 size={18} />}
             right={
               <div className="flex items-center gap-2">
-                <Button variant="outline" type="button" onClick={onExport} disabled={rows.length === 0 || loading}>
-                  <FileDown size={16} /> Exportar CSV
+                <Button variant="outline" type="button" onClick={onExportExcel} disabled={rows.length === 0 || loading}>
+                  <FileDown size={16} /> Exportar Excel
+                </Button>
+                <Button variant="outline" type="button" onClick={onExportCSV} disabled={rows.length === 0 || loading}>
+                  <FileDown size={16} /> CSV
                 </Button>
                 <Button variant="outline" type="button" onClick={onPrint} disabled={rows.length === 0 || loading}>
                   <Printer size={16} /> Imprimir
